@@ -17,6 +17,12 @@ Prefer the helper functions in the `claude` schema over raw writes:
 -- Search dishes by name, old FamilyWall spellings or ingredient (accent-insensitive)
 select id, name, category, usual_moment, meals_covered from claude.find_dishes('courge');
 
+-- Add a wish for the next menu (dish name, accent/case-insensitive; must match one dish)
+select * from claude.add_wish('Raclette', 'envie de fromage');
+
+-- Add a dish to the current (latest) menu; kind = 'midi' | 'weekend' | 'soir' (default from the dish)
+select * from claude.add_to_menu('Poulet rôti', 'weekend');
+
 -- Add a dish (fails if the name already exists)
 select * from claude.add_dish(
   p_name => 'Curry de potimarron', p_category => 'végétarien',
@@ -31,6 +37,9 @@ Tables (all in `public`, protected by RLS for household members; Claude runs as 
 | `dishes` | the catalogue. `usual_moment`: midi / soir / both / dessert (a preference, not a rule). `meals_covered`: how many meals one batch covers for 2 people. `effort`: quick / normal / long. `kids_ok`: null = unknown. `to_review`: imported guess, to check. `aliases`: old FamilyWall names. |
 | `ingredients`, `dish_ingredients` | ingredients with preferred store; quantities are for 2 people |
 | `history` | meals eaten. FamilyWall imports have `eaten_on` null and `legacy_rank` (higher = more recent) |
+| `menus` | one per week, `starts_on` = Saturday; `need_midi` / `need_weekend` / `need_soir` = meals to cover |
+| `menu_items` | dishes of a menu: `kind` midi/weekend/soir, `meals` covered, `eaten` parts; `source` generated/manual/wish/leftover |
+| `wishes` | dishes to put first in the next menu |
 | `members` | household accounts allowed to use the app |
 
 ## Household rules (for suggestions and menus)

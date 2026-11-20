@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { supabase } from './supabase'
-import { CATEGORIES, MOMENT_LABEL, type Dish, type DishWithStats } from './types'
+import { useMemo, useState } from 'react'
+import { useDishes } from './data'
+import { fold } from './text'
+import { CATEGORIES, MOMENT_LABEL, type Dish } from './types'
 import { DishSheet } from './DishSheet'
 
 type Filter = 'all' | 'midi' | 'soir' | 'review' | 'favorite'
@@ -12,11 +13,6 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'favorite', label: 'Favoris' },
   { id: 'review', label: 'À vérifier' },
 ]
-
-/** Lowercase, no accents: "Épinards" -> "epinards". */
-export function fold(s: string) {
-  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
-}
 
 function matchesFilter(d: Dish, f: Filter) {
   switch (f) {
@@ -34,39 +30,10 @@ function matchesFilter(d: Dish, f: Filter) {
 }
 
 export function DishesScreen() {
-  const [dishes, setDishes] = useState<DishWithStats[] | null>(null)
-  const [loadError, setLoadError] = useState('')
+  const { dishes, error: loadError, reload } = useDishes()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [editing, setEditing] = useState<Dish | 'new' | null>(null)
-
-  const load = useCallback(async () => {
-    const [d, h] = await Promise.all([
-      supabase.from('dishes').select('*').order('name'),
-      supabase.from('history').select('dish_id').limit(10000),
-    ])
-    if (d.error || h.error) {
-      setLoadError((d.error ?? h.error)!.message)
-      return
-    }
-    const counts = new Map<number, number>()
-    for (const row of h.data) {
-      if (row.dish_id != null) counts.set(row.dish_id, (counts.get(row.dish_id) ?? 0) + 1)
-    }
-    setDishes((d.data as Dish[]).map((x) => ({ ...x, times: counts.get(x.id) ?? 0 })))
-  }, [])
-
-  useEffect(() => {
-    load()
-    // Changes made by the other phone (or by Claude) show up live.
-    const channel = supabase
-      .channel('dishes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dishes' }, () => load())
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [load])
 
   const groups = useMemo(() => {
     if (!dishes) return []
@@ -172,7 +139,7 @@ export function DishesScreen() {
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
-            load()
+            reload()
           }}
         />
       )}

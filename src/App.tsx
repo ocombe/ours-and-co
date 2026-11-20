@@ -3,12 +3,33 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import { Login } from './Login'
 import { DishesScreen } from './DishesScreen'
+import { MenuScreen } from './MenuScreen'
+
+type Tab = 'menu' | 'plats'
+
+function initialTab(): Tab {
+  try {
+    return localStorage.getItem('tab') === 'plats' ? 'plats' : 'menu'
+  } catch {
+    return 'menu'
+  }
+}
 
 type Membership = 'checking' | 'member' | 'outsider'
 
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [membership, setMembership] = useState<Membership>('checking')
+  const [tab, setTabState] = useState<Tab>(initialTab)
+
+  function setTab(t: Tab) {
+    setTabState(t)
+    try {
+      localStorage.setItem('tab', t)
+    } catch {
+      // private mode: the tab just isn't remembered
+    }
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -58,12 +79,16 @@ export function App() {
           Se déconnecter
         </button>
       </header>
-      <DishesScreen />
+      {tab === 'menu' ? <MenuScreen /> : <DishesScreen />}
       <nav className="tabbar" aria-label="Sections">
-        <span className="tab" aria-disabled="true">Menu<small>bientôt</small></span>
-        <span className="tab active" aria-current="page">Plats</span>
-        <span className="tab" aria-disabled="true">Courses<small>bientôt</small></span>
-        <span className="tab" aria-disabled="true">Réserve<small>bientôt</small></span>
+        <button className={'tab' + (tab === 'menu' ? ' active' : '')} aria-current={tab === 'menu' ? 'page' : undefined} onClick={() => setTab('menu')}>
+          Menu
+        </button>
+        <button className={'tab' + (tab === 'plats' ? ' active' : '')} aria-current={tab === 'plats' ? 'page' : undefined} onClick={() => setTab('plats')}>
+          Plats
+        </button>
+        <span className="tab soon" aria-disabled="true">Courses<small>bientôt</small></span>
+        <span className="tab soon" aria-disabled="true">Réserve<small>bientôt</small></span>
       </nav>
     </div>
   )

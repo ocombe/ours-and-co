@@ -19,9 +19,45 @@ export interface Dish {
   familywall_box: string[]
 }
 
-/** Dish plus how often it was eaten (from history). */
+/** Dish plus how often and how recently it was eaten (from history). */
 export interface DishWithStats extends Dish {
   times: number
+  /** Weeks since it was last eaten; null if never. Estimated for FamilyWall imports. */
+  weeksAgo: number | null
+}
+
+export type Kind = 'midi' | 'weekend' | 'soir'
+
+export const KIND_LABEL: Record<Kind, string> = {
+  weekend: 'Midis du week-end (à 4)',
+  midi: 'Midis de semaine',
+  soir: 'Soirs',
+}
+
+export interface Menu {
+  id: number
+  starts_on: string
+  need_midi: number
+  need_weekend: number
+  need_soir: number
+}
+
+export interface MenuItem {
+  id: number
+  menu_id: number
+  dish_id: number | null
+  label: string
+  kind: Kind
+  meals: number
+  eaten: number
+  source: 'generated' | 'manual' | 'wish' | 'leftover'
+  day: string | null
+}
+
+export interface Wish {
+  id: number
+  dish_id: number
+  note: string | null
 }
 
 export const CATEGORIES = [
