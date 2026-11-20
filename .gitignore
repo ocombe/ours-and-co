@@ -5,3 +5,4 @@ dist/
 # Personal data and planning notes stay local (public repo)
 data/
 SPEC.md
+*.tsbuildinfo
