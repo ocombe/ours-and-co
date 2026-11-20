@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env*.local
+.claude/settings.local.json
+# Personal data and planning notes stay local (public repo)
+data/
+SPEC.md

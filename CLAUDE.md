@@ -1,0 +1,46 @@
+# Ours & Co
+
+Family PWA for meals, shopping lists and pantry/freezer stock. UI and data are in French.
+
+- App: Vite + React + TypeScript, PWA (vite-plugin-pwa), deployed to GitHub Pages
+  (`https://ocombe.github.io/ours-and-co/`) by `.github/workflows/deploy.yml` on push to `main`.
+- Data: Supabase project `ours-and-co` (ref `xeobqdfkjbtclosrfhmi`, eu-west-3).
+  Schema changes live in `supabase/migrations/`; apply them with the Supabase MCP `apply_migration`.
+- Local spec and raw data (`SPEC.md`, `data/`) are git-ignored on purpose: the repo is public.
+
+## Reading and changing data from a chat
+
+Use the Supabase connector (`execute_sql`) on project `xeobqdfkjbtclosrfhmi`.
+Prefer the helper functions in the `claude` schema over raw writes:
+
+```sql
+-- Search dishes by name, old FamilyWall spellings or ingredient (accent-insensitive)
+select id, name, category, usual_moment, meals_covered from claude.find_dishes('courge');
+
+-- Add a dish (fails if the name already exists)
+select * from claude.add_dish(
+  p_name => 'Curry de potimarron', p_category => 'végétarien',
+  p_usual_moment => 'soir', p_meals_covered => 2, p_kids_ok => null,
+  p_season => 'winter', p_notes => 'Recette : …', p_link => null);
+```
+
+Tables (all in `public`, protected by RLS for household members; Claude runs as `postgres`):
+
+| Table | What |
+|---|---|
+| `dishes` | the catalogue. `usual_moment`: midi / soir / both / dessert (a preference, not a rule). `meals_covered`: how many meals one batch covers for 2 people. `effort`: quick / normal / long. `kids_ok`: null = unknown. `to_review`: imported guess, to check. `aliases`: old FamilyWall names. |
+| `ingredients`, `dish_ingredients` | ingredients with preferred store; quantities are for 2 people |
+| `history` | meals eaten. FamilyWall imports have `eaten_on` null and `legacy_rank` (higher = more recent) |
+| `members` | household accounts allowed to use the app |
+
+## Household rules (for suggestions and menus)
+
+- 2 people per meal; weekend lunches are for 4 (with the kids) and need `kids_ok` dishes.
+- Meat dishes are usually lunch; quiches, salmon dishes, croque monsieur, caillettes, saucisson brioché are usually dinner.
+- One dish can cover several meals (quiche = 2 dinners, roast chicken = 3 lunches).
+- Long dishes (couscous, paella…) are rare: at most one per week.
+- Shopping: market on Saturday morning, Carrefour on Wednesday morning.
+- "Fushis" = home-made "faux sushis" (raw salmon on rice), not fusilli.
+- Steaks and steaks hachés are different dishes.
+
+Before adding a dish, search for it first to avoid duplicates. Confirm with the user before deleting anything.
