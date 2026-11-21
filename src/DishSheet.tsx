@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from './supabase'
+import { DishIngredients } from './DishIngredients'
 import {
   CATEGORIES,
   EFFORT_LABEL,
@@ -181,6 +182,12 @@ export function DishSheet({ dish, initialName, onClose, onSaved }: Props) {
           <input type="checkbox" checked={draft.favorite} onChange={(e) => set('favorite', e.target.checked)} />
           Favori (tiré plus souvent)
         </label>
+
+        {dish ? (
+          <DishIngredients dishId={dish.id} />
+        ) : (
+          <p className="muted small">Les ingrédients s’ajoutent une fois le plat enregistré.</p>
+        )}
 
         <label className="field">
           <span>Notes ou recette</span>

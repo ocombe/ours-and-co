@@ -4,15 +4,21 @@ import { supabase } from './supabase'
 import { Login } from './Login'
 import { DishesScreen } from './DishesScreen'
 import { MenuScreen } from './MenuScreen'
+import { CoursesScreen } from './CoursesScreen'
+import { ReserveScreen } from './ReserveScreen'
+import { remember } from './useTable'
 
-type Tab = 'menu' | 'plats'
+const TABS = [
+  { id: 'menu', label: 'Menu' },
+  { id: 'plats', label: 'Plats' },
+  { id: 'courses', label: 'Courses' },
+  { id: 'reserve', label: 'Réserve' },
+] as const
+type Tab = (typeof TABS)[number]['id']
 
 function initialTab(): Tab {
-  try {
-    return localStorage.getItem('tab') === 'plats' ? 'plats' : 'menu'
-  } catch {
-    return 'menu'
-  }
+  const saved = remember('tab')
+  return TABS.find((t) => t.id === saved)?.id ?? 'menu'
 }
 
 type Membership = 'checking' | 'member' | 'outsider'
@@ -24,11 +30,7 @@ export function App() {
 
   function setTab(t: Tab) {
     setTabState(t)
-    try {
-      localStorage.setItem('tab', t)
-    } catch {
-      // private mode: the tab just isn't remembered
-    }
+    remember('tab', t)
   }
 
   useEffect(() => {
@@ -79,16 +81,21 @@ export function App() {
           Se déconnecter
         </button>
       </header>
-      {tab === 'menu' ? <MenuScreen /> : <DishesScreen />}
+      {tab === 'menu' && <MenuScreen />}
+      {tab === 'plats' && <DishesScreen />}
+      {tab === 'courses' && <CoursesScreen />}
+      {tab === 'reserve' && <ReserveScreen />}
       <nav className="tabbar" aria-label="Sections">
-        <button className={'tab' + (tab === 'menu' ? ' active' : '')} aria-current={tab === 'menu' ? 'page' : undefined} onClick={() => setTab('menu')}>
-          Menu
-        </button>
-        <button className={'tab' + (tab === 'plats' ? ' active' : '')} aria-current={tab === 'plats' ? 'page' : undefined} onClick={() => setTab('plats')}>
-          Plats
-        </button>
-        <span className="tab soon" aria-disabled="true">Courses<small>bientôt</small></span>
-        <span className="tab soon" aria-disabled="true">Réserve<small>bientôt</small></span>
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={'tab' + (tab === t.id ? ' active' : '')}
+            aria-current={tab === t.id ? 'page' : undefined}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
       </nav>
     </div>
   )

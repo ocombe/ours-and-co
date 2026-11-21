@@ -4,6 +4,7 @@ import { useDishes } from './data'
 import { covered, fill, isoDate, mealsFor, need, nextSaturday, replacement } from './generator'
 import { longDate } from './text'
 import { DishPicker } from './DishPicker'
+import { dishesUsingReserve, fillShopping } from './shopping'
 import { KIND_LABEL, type Kind, type Menu, type MenuItem, type Wish } from './types'
 
 const KINDS: Kind[] = ['weekend', 'midi', 'soir']
@@ -18,6 +19,7 @@ export function MenuScreen() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [picker, setPicker] = useState<'menu' | 'wish' | null>(null)
+  const [shopMsg, setShopMsg] = useState('')
 
   const load = useCallback(async () => {
     const [m, w] = await Promise.all([
@@ -95,7 +97,8 @@ export function MenuScreen() {
 
   async function fillMenu() {
     if (!menu || !dishes) return
-    const { add, usedWishes } = fill(menu, items, dishes, wishes)
+    const boost = await dishesUsingReserve()
+    const { add, usedWishes } = fill(menu, items, dishes, wishes, { boost })
     await run(async () => {
       if (add.length) {
         const r = await supabase.from('menu_items').insert(add.map((a) => ({ ...a, menu_id: menu.id })))
@@ -107,7 +110,7 @@ export function MenuScreen() {
 
   async function replace(item: MenuItem) {
     if (!dishes) return
-    const dish = replacement(item, items, dishes)
+    const dish = replacement(item, items, dishes, { boost: await dishesUsingReserve() })
     if (!dish) return setError('Aucun autre plat ne respecte les règles pour ce repas.')
     await run(() =>
       supabase
@@ -115,6 +118,26 @@ export function MenuScreen() {
         .update({ dish_id: dish.id, label: dish.name, meals: mealsFor(dish, item.kind), source: 'generated', eaten: 0 })
         .eq('id', item.id),
     )
+  }
+
+  async function toShopping() {
+    if (!menu) return
+    setBusy(true)
+    setError('')
+    setShopMsg('')
+    try {
+      const r = await fillShopping(menu, items)
+      const parts = [
+        r.added ? `${r.added} ingrédient${r.added > 1 ? 's' : ''} ajouté${r.added > 1 ? 's' : ''} aux courses.` : 'Aucun ingrédient à ajouter.',
+      ]
+      if (r.inReserve.length) parts.push(`Déjà en réserve : ${r.inReserve.join(', ')}.`)
+      if (r.dishesWithoutIngredients.length)
+        parts.push(`Sans ingrédients renseignés : ${r.dishesWithoutIngredients.join(', ')}.`)
+      setShopMsg(parts.join(' '))
+    } catch (e) {
+      setError((e as Error).message)
+    }
+    setBusy(false)
   }
 
   async function toggleEaten(item: MenuItem, part: number) {
@@ -212,7 +235,11 @@ export function MenuScreen() {
         <button className="btn ghost" disabled={!dishes} onClick={() => setPicker('menu')}>
           Ajouter un plat
         </button>
+        <button className="btn ghost" disabled={busy || items.length === 0} onClick={toShopping}>
+          Mettre dans les courses
+        </button>
       </div>
+      {shopMsg && <p className="notice-text">{shopMsg}</p>}
 
       {error && <p className="error">{error}</p>}
 

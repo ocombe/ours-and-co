@@ -1,0 +1,204 @@
+import { useState, type FormEvent } from 'react'
+import { supabase } from './supabase'
+import { remember, useTable } from './useTable'
+import { fold } from './text'
+import { AISLES, aisleOf, guessAisle } from './aisles'
+import { LOCATIONS, type Ingredient, type ListItem, type Location, type ShoppingList } from './types'
+
+export function CoursesScreen() {
+  const lists = useTable<ShoppingList>('lists', 'position')
+  const items = useTable<ListItem>('list_items', 'id')
+  const ingredients = useTable<Ingredient>('ingredients', 'name')
+  const [selected, setSelectedState] = useState<number | null>(() => Number(remember('list')) || null)
+  const [label, setLabel] = useState('')
+  const [quantity, setQuantity] = useState('')
+  const [open, setOpen] = useState<number | null>(null) // item whose options are shown
+  const [error, setError] = useState('')
+
+  function select(id: number) {
+    setSelectedState(id)
+    remember('list', String(id))
+  }
+
+  async function act(p: PromiseLike<{ error: { message: string } | null }>) {
+    const { error } = await p
+    setError(error ? error.message : '')
+  }
+
+  if (!lists.rows || !items.rows) {
+    return (
+      <main className="screen">
+        <h1>Courses</h1>
+        <p className={lists.error || items.error ? 'error' : 'muted'}>{lists.error || items.error || 'Chargement…'}</p>
+      </main>
+    )
+  }
+
+  const current = lists.rows.find((l) => l.id === selected) ?? lists.rows[0]
+  const mine = items.rows.filter((i) => i.list_id === current?.id)
+  const todo = mine.filter((i) => !i.done)
+  const done = mine.filter((i) => i.done)
+  const openCount = (id: number) => items.rows!.filter((i) => i.list_id === id && !i.done).length
+  const findIngredient = (name: string) => ingredients.rows?.find((i) => fold(i.name) === fold(name))
+
+  async function add(e: FormEvent) {
+    e.preventDefault()
+    if (!current || !label.trim()) return
+    const ing = findIngredient(label.trim())
+    await act(
+      supabase.from('list_items').insert({
+        list_id: current.id,
+        label: label.trim(),
+        quantity: quantity.trim() || null,
+        ingredient_id: ing?.id ?? null,
+        aisle: ing?.aisle ?? guessAisle(label),
+      }),
+    )
+    setLabel('')
+    setQuantity('')
+  }
+
+  /** Change an item's aisle and remember it for this product next time. */
+  async function setAisle(item: ListItem, aisle: string) {
+    setOpen(null)
+    let ingredientId = item.ingredient_id ?? findIngredient(item.label)?.id ?? null
+    if (ingredientId) {
+      await supabase.from('ingredients').update({ aisle }).eq('id', ingredientId)
+    } else {
+      const created = await supabase.from('ingredients').insert({ name: item.label, aisle }).select('id').single()
+      ingredientId = created.data?.id ?? null
+    }
+    await act(supabase.from('list_items').update({ aisle, ingredient_id: ingredientId }).eq('id', item.id))
+  }
+
+  async function toReserve(item: ListItem, location: Location) {
+    setOpen(null)
+    const r = await supabase
+      .from('reserve_items')
+      .insert({ label: item.label, quantity: item.quantity, location, ingredient_id: item.ingredient_id })
+    if (r.error) return setError(r.error.message)
+    await act(supabase.from('list_items').delete().eq('id', item.id))
+  }
+
+  function row(it: ListItem) {
+    return (
+      <li key={it.id} className={'list-row' + (it.done ? ' is-done' : '')}>
+        <div className="list-row-main">
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={it.done}
+              onChange={() => act(supabase.from('list_items').update({ done: !it.done }).eq('id', it.id))}
+            />
+            <span>
+              <span className="item-label">{it.label}</span>
+              {it.quantity && <span className="muted"> {it.quantity}</span>}
+            </span>
+          </label>
+          <button
+            className="icon-btn"
+            aria-expanded={open === it.id}
+            aria-label={`Options pour ${it.label}`}
+            onClick={() => setOpen(open === it.id ? null : it.id)}
+          >
+            ⋯
+          </button>
+        </div>
+        {open === it.id && (
+          <div className="item-options">
+            <label className="field">
+              <span>Rayon</span>
+              <select value={aisleOf(it)} onChange={(e) => setAisle(it, e.target.value)}>
+                {AISLES.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="field">
+              <span>Mettre en réserve</span>
+              <div className="segmented">
+                {LOCATIONS.map((loc) => (
+                  <button key={loc} className="btn ghost small" onClick={() => toReserve(it, loc)}>
+                    {loc}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </li>
+    )
+  }
+
+  const byAisle = AISLES.map((a) => ({ aisle: a, items: todo.filter((i) => aisleOf(i) === a) })).filter((g) => g.items.length)
+
+  return (
+    <main className="screen">
+      <div className="screen-head">
+        <h1>Courses</h1>
+      </div>
+
+      <div className="search-bar">
+        <div className="chips" role="tablist" aria-label="Listes">
+          {lists.rows.map((l) => (
+            <button
+              key={l.id}
+              role="tab"
+              aria-selected={l.id === current?.id}
+              className={'chip' + (l.id === current?.id ? ' on' : '')}
+              onClick={() => select(l.id)}
+            >
+              {l.name}
+              {openCount(l.id) > 0 && <span className="count">{openCount(l.id)}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <form className="add-row" onSubmit={add}>
+        <input
+          list="known-products"
+          aria-label={`Ajouter à ${current?.name}`}
+          placeholder={`Ajouter à ${current?.name}…`}
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+        />
+        <input className="qty" aria-label="Quantité" placeholder="Qté" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+        <button className="btn honey">Ajouter</button>
+      </form>
+      <datalist id="known-products">
+        {ingredients.rows?.map((i) => (
+          <option key={i.id} value={i.name} />
+        ))}
+      </datalist>
+
+      {error && <p className="error">{error}</p>}
+
+      {todo.length === 0 && done.length === 0 && <p className="muted">La liste est vide.</p>}
+
+      {byAisle.map((g) => (
+        <section key={g.aisle} className="group aisle">
+          <h2>{g.aisle}</h2>
+          <ul className="dish-list">{g.items.map(row)}</ul>
+        </section>
+      ))}
+
+      {done.length > 0 && (
+        <section className="group">
+          <div className="row-between">
+            <h2>Dans le panier</h2>
+            <button
+              className="btn ghost small"
+              onClick={() => act(supabase.from('list_items').delete().in('id', done.map((d) => d.id)))}
+            >
+              Retirer les {done.length} articles cochés
+            </button>
+          </div>
+          <ul className="dish-list">{done.map(row)}</ul>
+        </section>
+      )}
+    </main>
+  )
+}

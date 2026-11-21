@@ -23,6 +23,12 @@ select * from claude.add_wish('Raclette', 'envie de fromage');
 -- Add a dish to the current (latest) menu; kind = 'midi' | 'weekend' | 'soir' (default from the dish)
 select * from claude.add_to_menu('Poulet rôti', 'weekend');
 
+-- Add to a shopping list by list name (Marché, Carrefour, Picard, Courses, Pharmacie, Vrac, Bricolage, Ikea)
+select * from claude.add_to_list('Marché', 'Poireaux', '3');
+
+-- Add to the reserve (location: congélateur, frigo or placard)
+select * from claude.add_to_reserve('Magrets de canard', '2', 'congélateur');
+
 -- Add a dish (fails if the name already exists)
 select * from claude.add_dish(
   p_name => 'Curry de potimarron', p_category => 'végétarien',
@@ -35,11 +41,13 @@ Tables (all in `public`, protected by RLS for household members; Claude runs as 
 | Table | What |
 |---|---|
 | `dishes` | the catalogue. `usual_moment`: midi / soir / both / dessert (a preference, not a rule). `meals_covered`: how many meals one batch covers for 2 people. `effort`: quick / normal / long. `kids_ok`: null = unknown. `to_review`: imported guess, to check. `aliases`: old FamilyWall names. |
-| `ingredients`, `dish_ingredients` | ingredients with preferred store; quantities are for 2 people |
+| `ingredients`, `dish_ingredients` | products with preferred `store` (a list name) and `aisle`; dish quantities are for 2 people |
 | `history` | meals eaten. FamilyWall imports have `eaten_on` null and `legacy_rank` (higher = more recent) |
 | `menus` | one per week, `starts_on` = Saturday; `need_midi` / `need_weekend` / `need_soir` = meals to cover |
 | `menu_items` | dishes of a menu: `kind` midi/weekend/soir, `meals` covered, `eaten` parts; `source` generated/manual/wish/leftover |
 | `wishes` | dishes to put first in the next menu |
+| `lists`, `list_items` | shopping lists and their items (`aisle` = rayon, `menu_id` set when filled from a menu) |
+| `reserve_items` | what we already have (freezer, fridge, pantry); kept off shopping lists, favoured by the generator |
 | `members` | household accounts allowed to use the app |
 
 ## Household rules (for suggestions and menus)

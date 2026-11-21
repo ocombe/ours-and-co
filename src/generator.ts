@@ -6,7 +6,7 @@ import type { DishWithStats, Kind, Menu, MenuItem, Wish } from './types'
  * - a dish goes to its usual moment (midi / soir, "both" fits either);
  * - weekend lunches are for 4 and need dishes the kids eat;
  * - one dish covers several meals (fewer at 4 people);
- * - wishes first; recently eaten dishes are avoided, frequent and favourite
+ * - wishes first, then dishes using what is in the reserve; recently eaten dishes are avoided, frequent and favourite
  *   ones come up more; at most one long dish per week; variety of categories;
  *   seasonal dishes only in their season.
  */
@@ -45,8 +45,10 @@ function fitsKind(dish: DishWithStats, kind: Kind) {
   return dish.usual_moment === 'midi' || dish.usual_moment === 'both'
 }
 
-function weight(dish: DishWithStats, kind: Kind, chosen: DishWithStats[]) {
+function weight(dish: DishWithStats, kind: Kind, chosen: DishWithStats[], boost?: Set<number>) {
   let w = Math.pow(1 + dish.times, 0.6)
+  // Uses something we already have (freezer, pantry): strongly favoured.
+  if (boost?.has(dish.id)) w *= 4
   if (dish.favorite) w *= 2
   if (dish.effort === 'long') w *= 0.35
   // Recently eaten: almost never this week, half weight two weeks ago, normal after a month.
@@ -75,6 +77,8 @@ interface PickContext {
   /** Dishes already in the menu (and any to exclude). */
   chosen: DishWithStats[]
   exclude?: Set<number>
+  /** Dishes to favour (they use something from the reserve). */
+  boost?: Set<number>
   now?: Date
   random?: () => number
 }
@@ -94,7 +98,7 @@ export function pickDish(kind: Kind, ctx: PickContext): DishWithStats | null {
   )
   return pickWeighted(
     candidates,
-    candidates.map((d) => weight(d, kind, ctx.chosen)),
+    candidates.map((d) => weight(d, kind, ctx.chosen, ctx.boost)),
     ctx.random ?? Math.random,
   )
 }
@@ -108,7 +112,7 @@ export function fill(
   items: MenuItem[],
   dishes: DishWithStats[],
   wishes: Wish[],
-  opts: { now?: Date; random?: () => number } = {},
+  opts: { now?: Date; random?: () => number; boost?: Set<number> } = {},
 ): { add: NewItem[]; usedWishes: number[] } {
   const byId = new Map(dishes.map((d) => [d.id, d]))
   const chosen = items.map((i) => (i.dish_id != null ? byId.get(i.dish_id) : undefined)).filter((d) => !!d)
@@ -139,7 +143,7 @@ export function fill(
   for (const kind of ['weekend', 'midi', 'soir'] as Kind[]) {
     let guard = 30
     while (covered(all, kind) < need(menu, kind) && guard-- > 0) {
-      const dish = pickDish(kind, { dishes, chosen, now: opts.now, random: opts.random })
+      const dish = pickDish(kind, { dishes, chosen, boost: opts.boost, now: opts.now, random: opts.random })
       if (!dish) break
       push(dish, kind, 'generated')
     }
@@ -153,7 +157,7 @@ export function replacement(
   item: MenuItem,
   items: MenuItem[],
   dishes: DishWithStats[],
-  opts: { now?: Date; random?: () => number } = {},
+  opts: { now?: Date; random?: () => number; boost?: Set<number> } = {},
 ): DishWithStats | null {
   const byId = new Map(dishes.map((d) => [d.id, d]))
   const chosen = items
@@ -161,7 +165,7 @@ export function replacement(
     .map((i) => (i.dish_id != null ? byId.get(i.dish_id) : undefined))
     .filter((d) => !!d)
   const exclude = new Set(item.dish_id != null ? [item.dish_id] : [])
-  return pickDish(item.kind, { dishes, chosen, exclude, now: opts.now, random: opts.random })
+  return pickDish(item.kind, { dishes, chosen, exclude, boost: opts.boost, now: opts.now, random: opts.random })
 }
 
 /** The Saturday a new menu starts on: today if Saturday, else the next one. */

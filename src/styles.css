@@ -710,6 +710,139 @@ textarea:focus {
   overflow-y: auto;
 }
 
-.tab.soon {
-  cursor: default;
+/* ------------------------------------------------------------ courses + reserve */
+.add-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.add-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-row .qty {
+  flex: 0 0 76px;
+}
+
+.add-reserve {
+  margin: 14px 0;
+  gap: 10px;
+}
+
+.add-reserve .add-row {
+  margin: 0;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  cursor: pointer;
+}
+
+.check-row input {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  accent-color: var(--honey);
+}
+
+.item-label {
+  font-weight: 700;
+}
+
+.is-done .item-label {
+  text-decoration: line-through;
+  color: var(--fur-soft);
+}
+
+.segmented.compact {
+  flex-wrap: nowrap;
+}
+
+.ingredient-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ingredient-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ing-name {
+  flex: 1;
+  font-weight: 700;
+}
+
+.ingredient-list select {
+  width: auto;
+  padding: 0.3em 0.4em;
+  font-size: 0.9rem;
+}
+
+.ing-add {
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.ing-add input:first-child {
+  flex: 1 1 140px;
+}
+
+.ing-add .qty {
+  flex: 0 0 64px;
+}
+
+.notice-text {
+  background: var(--sweater-wash);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 0.92rem;
+}
+
+.list-row:has(> .list-row-main) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.list-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.list-row-main .icon-btn {
+  border: 0;
+  background: none;
+  color: var(--fur-soft);
+}
+
+.item-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 4px 36px;
+}
+
+.group.aisle h2 {
+  font-size: 1rem;
+  color: var(--fur-soft);
 }

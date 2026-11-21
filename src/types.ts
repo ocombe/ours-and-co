@@ -91,3 +91,38 @@ export const EFFORT_LABEL: Record<Effort, string> = {
   normal: 'Normal',
   long: 'Long à faire',
 }
+
+export interface ShoppingList {
+  id: number
+  name: string
+  position: number
+}
+
+export interface ListItem {
+  id: number
+  list_id: number
+  label: string
+  quantity: string | null
+  done: boolean
+  ingredient_id: number | null
+  menu_id: number | null
+  aisle: string | null
+}
+
+export type Location = 'congélateur' | 'frigo' | 'placard'
+export const LOCATIONS: Location[] = ['congélateur', 'frigo', 'placard']
+
+export interface ReserveItem {
+  id: number
+  label: string
+  quantity: string | null
+  location: Location
+  ingredient_id: number | null
+}
+
+export interface Ingredient {
+  id: number
+  name: string
+  store: string | null
+  aisle?: string | null
+}
