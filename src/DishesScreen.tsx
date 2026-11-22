@@ -31,7 +31,7 @@ function matchesFilter(d: Dish, f: Filter) {
 }
 
 export function DishesScreen() {
-  const { dishes, error: loadError, reload } = useDishes()
+  const { dishes, error: loadError } = useDishes()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [editing, setEditing] = useState<Dish | 'new' | null>(null)
@@ -160,8 +160,8 @@ export function DishesScreen() {
             reloadIngredients() // they may have been edited in the sheet
           }}
           onSaved={() => {
+            // The saved dish comes back through the live sync; ingredients are not live.
             setEditing(null)
-            reload()
             reloadIngredients()
           }}
         />

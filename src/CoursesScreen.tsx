@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from './supabase'
 import { remember, useTable } from './useTable'
+import { upsert } from './live'
 import { fold, fullMoment, shortMoment } from './text'
 import { slug } from './route'
 import { SuggestInput } from './SuggestInput'
@@ -61,10 +62,17 @@ export function CoursesScreen({ listSlug, onList }: Props) {
     if (slug(current.name) !== listSlug) onList(slug(current.name), true)
   }, [current, listSlug, onList])
 
-  async function act(p: PromiseLike<{ error: { message: string } | null }>) {
-    const { error } = await p
+  /** Show a change at once, send it, and get the server's state back if it failed. */
+  async function optimistic(local: (rows: ListItem[]) => ListItem[], request: PromiseLike<{ error: { message: string } | null }>) {
+    items.mutate(local)
+    const { error } = await request
     setError(error ? error.message : '')
+    if (error) items.reload()
   }
+
+  /** Local copy of an item with some changes, marked as modified now. */
+  const changed = (id: number, changes: Partial<ListItem>) => (rows: ListItem[]) =>
+    rows.map((r) => (r.id === id ? { ...r, ...changes, updated_at: new Date().toISOString() } : r))
 
   if (!lists.rows || !items.rows) {
     return (
@@ -88,15 +96,20 @@ export function CoursesScreen({ listSlug, onList }: Props) {
     e.preventDefault()
     if (!current || !label.trim()) return
     const ing = findIngredient(label.trim())
-    await act(
-      supabase.from('list_items').insert({
+    // The new row comes back with the insert: shown at once, no reload.
+    const r = await supabase
+      .from('list_items')
+      .insert({
         list_id: current.id,
         label: label.trim(),
         quantity: quantity.trim() || null,
         ingredient_id: ing?.id ?? null,
         aisle: ing?.aisle ?? guessAisle(label),
-      }),
-    )
+      })
+      .select()
+      .single()
+    setError(r.error ? r.error.message : '')
+    if (r.data) items.mutate((rows) => upsert(rows, r.data as ListItem))
     setLabel('')
     setQuantity('')
   }
@@ -111,7 +124,10 @@ export function CoursesScreen({ listSlug, onList }: Props) {
       const created = await supabase.from('ingredients').insert({ name: item.label, aisle }).select('id').single()
       ingredientId = created.data?.id ?? null
     }
-    await act(supabase.from('list_items').update({ aisle, ingredient_id: ingredientId }).eq('id', item.id))
+    await optimistic(
+      changed(item.id, { aisle, ingredient_id: ingredientId }),
+      supabase.from('list_items').update({ aisle, ingredient_id: ingredientId }).eq('id', item.id),
+    )
   }
 
   async function toReserve(item: ListItem, location: Location) {
@@ -120,7 +136,7 @@ export function CoursesScreen({ listSlug, onList }: Props) {
       .from('reserve_items')
       .insert({ label: item.label, quantity: item.quantity, location, ingredient_id: item.ingredient_id })
     if (r.error) return setError(r.error.message)
-    await act(supabase.from('list_items').delete().eq('id', item.id))
+    await optimistic((rows) => rows.filter((r) => r.id !== item.id), supabase.from('list_items').delete().eq('id', item.id))
   }
 
   function row(it: ListItem) {
@@ -131,7 +147,9 @@ export function CoursesScreen({ listSlug, onList }: Props) {
             <input
               type="checkbox"
               checked={it.done}
-              onChange={() => act(supabase.from('list_items').update({ done: !it.done }).eq('id', it.id))}
+              onChange={() =>
+                optimistic(changed(it.id, { done: !it.done }), supabase.from('list_items').update({ done: !it.done }).eq('id', it.id))
+              }
             />
             <span>
               <span className="item-label">{it.label}</span>
@@ -245,7 +263,10 @@ export function CoursesScreen({ listSlug, onList }: Props) {
             <h2>Dans le panier</h2>
             <button
               className="btn ghost small"
-              onClick={() => act(supabase.from('list_items').delete().in('id', done.map((d) => d.id)))}
+              onClick={() => {
+                const ids = done.map((d) => d.id)
+                optimistic((rows) => rows.filter((r) => !ids.includes(r.id)), supabase.from('list_items').delete().in('id', ids))
+              }}
             >
               Retirer les {done.length} articles cochés
             </button>

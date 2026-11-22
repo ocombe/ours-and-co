@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { useDishes } from './data'
+import { applyChange, coalesce, listen, sortBy, upsert, type Change } from './live'
 import { COUNTED_KINDS, covered, fill, isoDate, mealsFor, need, nextSaturday, replacement } from './generator'
 import { longDate } from './text'
 import { DishPicker } from './DishPicker'
@@ -12,8 +13,10 @@ import { KIND_LABEL, type DishWithStats, type Kind, type Menu, type MenuItem, ty
 const NEED_FIELD: Record<Exclude<Kind, 'kids'>, keyof Menu> = { midi: 'need_midi', weekend: 'need_weekend', soir: 'need_soir' }
 const SOURCE_TAG: Partial<Record<MenuItem['source'], string>> = { leftover: 'reste', wish: 'envie' }
 
+type Result = PromiseLike<{ error: { message: string } | null }>
+
 export function MenuScreen() {
-  const { dishes, reload: reloadDishes } = useDishes()
+  const { dishes, ate } = useDishes()
   const [editing, setEditing] = useState<DishWithStats | null>(null)
   const [menu, setMenu] = useState<Menu | null | undefined>(undefined)
   const [items, setItems] = useState<MenuItem[]>([])
@@ -22,45 +25,73 @@ export function MenuScreen() {
   const [busy, setBusy] = useState(false)
   const [picker, setPicker] = useState<'menu' | 'wish' | 'choose' | null>(null)
   const [shopMsg, setShopMsg] = useState('')
+  const menuRef = useRef(menu)
+  menuRef.current = menu
 
-  const load = useCallback(async () => {
-    const [m, w] = await Promise.all([
-      supabase.from('menus').select('*').order('starts_on', { ascending: false }).limit(1).maybeSingle(),
-      supabase.from('wishes').select('*').order('created_at'),
-    ])
-    if (m.error || w.error) return setError((m.error ?? w.error)!.message)
+  /** The latest menu with its dishes, in one request. */
+  const loadMenu = useCallback(async () => {
+    const m = await supabase
+      .from('menus')
+      .select('*, menu_items(*)')
+      .order('starts_on', { ascending: false })
+      .order('id', { referencedTable: 'menu_items' })
+      .limit(1)
+      .maybeSingle()
+    if (m.error) return setError(m.error.message)
+    const { menu_items, ...rest } = (m.data ?? { menu_items: [] }) as Menu & { menu_items: MenuItem[] }
+    setMenu(m.data ? (rest as Menu) : null)
+    setItems(menu_items)
+  }, [])
+
+  const loadWishes = useCallback(async () => {
+    const w = await supabase.from('wishes').select('*').order('id')
+    if (w.error) return setError(w.error.message)
     setWishes(w.data as Wish[])
-    setMenu(m.data as Menu | null)
-    if (m.data) {
-      const it = await supabase.from('menu_items').select('*').eq('menu_id', m.data.id).order('created_at')
-      if (it.error) return setError(it.error.message)
-      setItems(it.data as MenuItem[])
-    } else {
-      setItems([])
-    }
   }, [])
 
   useEffect(() => {
-    load()
-    // Live: what one phone changes shows on the other.
-    const channel = supabase
-      .channel('menu')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menus' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wishes' }, () => load())
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [load])
+    loadMenu()
+    loadWishes()
+    const reloadMenu = coalesce(loadMenu)
+    // Live: changes (this phone, the other one, Claude) are applied from the event itself.
+    return listen(
+      'menu',
+      [
+        {
+          table: 'menu_items',
+          on: (c) => setItems((cur) => sortBy(applyChange(cur, c as Change<MenuItem>, (r) => r.menu_id === menuRef.current?.id), 'id')),
+        },
+        {
+          table: 'menus',
+          on: (c) => {
+            const row = (c as Change<Menu>).new as Menu
+            if (c.eventType === 'UPDATE' && row.id === menuRef.current?.id) setMenu(row)
+            else reloadMenu() // a new week (or a deleted one): load it with its dishes
+          },
+        },
+        { table: 'wishes', on: (c) => setWishes((cur) => sortBy(applyChange(cur, c as Change<Wish>), 'id')) },
+      ],
+      () => {
+        reloadMenu()
+        loadWishes()
+      },
+    )
+  }, [loadMenu, loadWishes])
 
-  /** Run a change, show its error if any, then reload. */
-  async function run(action: () => PromiseLike<{ error: { message: string } | null }>) {
+  /** Show menu items right away (they come back from the insert / update / RPC). */
+  function putItems(rows: MenuItem | MenuItem[] | null) {
+    if (rows) setItems((cur) => sortBy(upsert(cur, rows, (r) => r.menu_id === menuRef.current?.id), 'id'))
+  }
+
+  /** Run a change; on error show it and reload what is on screen from the server. */
+  async function run(action: () => Result) {
     setBusy(true)
     setError('')
     const { error } = await action()
-    if (error) setError(error.message)
-    await load()
+    if (error) {
+      setError(error.message)
+      await Promise.all([loadMenu(), loadWishes()])
+    }
     setBusy(false)
   }
 
@@ -88,12 +119,17 @@ export function MenuScreen() {
           meals: i.meals - i.eaten,
           source: 'leftover' as const,
         }))
-      return leftovers.length ? supabase.from('menu_items').insert(leftovers) : { error: null }
+      const r = leftovers.length ? await supabase.from('menu_items').insert(leftovers).select() : { data: [], error: null }
+      menuRef.current = created.data as Menu
+      setMenu(created.data as Menu)
+      setItems(sortBy((r.data ?? []) as MenuItem[], 'id'))
+      return r
     })
   }
 
   async function setNeed(kind: Kind, value: number) {
     if (!menu || kind === 'kids') return
+    setMenu({ ...menu, [NEED_FIELD[kind]]: value })
     await run(() => supabase.from('menus').update({ [NEED_FIELD[kind]]: value }).eq('id', menu.id))
   }
 
@@ -103,10 +139,13 @@ export function MenuScreen() {
     const { add, usedWishes } = fill(menu, items, dishes, wishes, { boost })
     await run(async () => {
       if (add.length) {
-        const r = await supabase.from('menu_items').insert(add.map((a) => ({ ...a, menu_id: menu.id })))
+        const r = await supabase.from('menu_items').insert(add.map((a) => ({ ...a, menu_id: menu.id }))).select()
         if (r.error) return r
+        putItems(r.data as MenuItem[])
       }
-      return usedWishes.length ? supabase.from('wishes').delete().in('id', usedWishes) : { error: null }
+      if (!usedWishes.length) return { error: null }
+      setWishes((cur) => cur.filter((w) => !usedWishes.includes(w.id)))
+      return supabase.from('wishes').delete().in('id', usedWishes)
     })
   }
 
@@ -117,21 +156,48 @@ export function MenuScreen() {
       const r = await supabase
         .from('menu_items')
         .insert({ menu_id: menu.id, dish_id: dish.id, label: dish.name, kind, meals: mealsFor(dish, kind), source })
-      if (r.error || !wish) return r
+        .select()
+        .single()
+      if (r.error) return r
+      putItems(r.data as MenuItem)
+      if (!wish) return r
+      setWishes((cur) => cur.filter((w) => w.id !== wish.id))
       return supabase.from('wishes').delete().eq('id', wish.id)
     })
+  }
+
+  async function addWish(dishId: number) {
+    await run(async () => {
+      const r = await supabase.from('wishes').insert({ dish_id: dishId }).select().single()
+      if (r.data) setWishes((cur) => sortBy(upsert(cur, r.data as Wish), 'id'))
+      return r
+    })
+  }
+
+  async function removeWish(id: number) {
+    setWishes((cur) => cur.filter((w) => w.id !== id))
+    await run(() => supabase.from('wishes').delete().eq('id', id))
+  }
+
+  async function removeItem(id: number) {
+    setItems((cur) => cur.filter((i) => i.id !== id))
+    await run(() => supabase.from('menu_items').delete().eq('id', id))
   }
 
   async function replace(item: MenuItem) {
     if (!dishes) return
     const dish = replacement(item, items, dishes, { boost: await dishesUsingReserve() })
     if (!dish) return setError('Aucun autre plat ne respecte les règles pour ce repas.')
-    await run(() =>
-      supabase
+    await run(async () => {
+      const r = await supabase
         .from('menu_items')
         .update({ dish_id: dish.id, label: dish.name, meals: mealsFor(dish, item.kind), source: 'generated', eaten: 0 })
-        .eq('id', item.id),
-    )
+        .eq('id', item.id)
+        .select()
+        .single()
+      putItems(r.data as MenuItem | null)
+      return r
+    })
   }
 
   async function toShopping() {
@@ -154,37 +220,18 @@ export function MenuScreen() {
     setBusy(false)
   }
 
+  /** Tick or untick one part: one call (history and counter change together in the database). */
   async function toggleEaten(item: MenuItem, part: number) {
-    if (part < item.eaten) {
-      // Un-eat the last part: remove its history row.
-      await run(async () => {
-        const last = await supabase
-          .from('history')
-          .select('id')
-          .eq('menu_item_id', item.id)
-          .order('id', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (last.data) await supabase.from('history').delete().eq('id', last.data.id)
-        return supabase.from('menu_items').update({ eaten: item.eaten - 1 }).eq('id', item.id)
-      })
-    } else {
-      await run(async () => {
-        const h = await supabase.from('history').insert({
-          dish_id: item.dish_id,
-          label: item.label,
-          eaten_on: isoDate(new Date()),
-          moment:
-            item.kind === 'soir' || (item.kind === 'kids' && dishById.get(item.dish_id ?? -1)?.usual_moment !== 'midi')
-              ? 'soir'
-              : 'midi',
-          people: item.kind === 'weekend' ? 4 : 2,
-          menu_item_id: item.id,
-        })
-        if (h.error) return h
-        return supabase.from('menu_items').update({ eaten: item.eaten + 1 }).eq('id', item.id)
-      })
-    }
+    const eat = part >= item.eaten
+    await run(async () => {
+      const r = eat
+        ? await supabase.rpc('eat_part', { p_item: item.id, p_on: isoDate(new Date()) })
+        : await supabase.rpc('uneat_part', { p_item: item.id })
+      if (r.error) return r
+      putItems(r.data as MenuItem)
+      if (item.dish_id != null) ate(item.dish_id, eat ? 1 : -1)
+      return r
+    })
   }
 
   if (menu === undefined) return <main className="screen"><p className="muted">Chargement…</p></main>
@@ -235,7 +282,7 @@ export function MenuScreen() {
                 <button
                   className="icon-btn"
                   aria-label={`Retirer l’envie ${dishById.get(w.dish_id)?.name ?? ''}`}
-                  onClick={() => run(() => supabase.from('wishes').delete().eq('id', w.id))}
+                  onClick={() => removeWish(w.id)}
                 >
                   ×
                 </button>
@@ -337,7 +384,7 @@ export function MenuScreen() {
                       <button
                         className="btn ghost small"
                         disabled={busy}
-                        onClick={() => run(() => supabase.from('menu_items').delete().eq('id', it.id))}
+                        onClick={() => removeItem(it.id)}
                       >
                         Retirer
                       </button>
@@ -355,10 +402,8 @@ export function MenuScreen() {
           dish={editing}
           initialName=""
           onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null)
-            reloadDishes()
-          }}
+          // The saved dish comes back through the live sync: nothing to reload.
+          onSaved={() => setEditing(null)}
         />
       )}
 
@@ -383,7 +428,7 @@ export function MenuScreen() {
           onPick={(dish, kind) => {
             setPicker(null)
             if (picker === 'menu') addItem(dish, kind, 'manual')
-            else run(() => supabase.from('wishes').insert({ dish_id: dish.id }))
+            else addWish(dish.id)
           }}
         />
       )}

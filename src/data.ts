@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { applyChange, coalesce, listen, sortBy, upsert, type Change } from './live'
 import type { Dish, DishWithStats } from './types'
 
 const WEEK = 7 * 24 * 3600 * 1000
@@ -8,7 +9,9 @@ const LEGACY_MEALS_PER_WEEK = 10
 
 /**
  * Loads all dishes with how often and how recently they were eaten.
- * Re-loads when dishes or history change (other phone, Claude…).
+ * Dish changes (other phone, Claude…) are applied live from the Realtime event.
+ * History is not live: `ate` updates the stats on screen when a part is ticked here,
+ * and everything is reloaded when the app comes back to the foreground.
  */
 export function useDishes() {
   const [dishes, setDishes] = useState<DishWithStats[] | null>(null)
@@ -48,14 +51,38 @@ export function useDishes() {
 
   useEffect(() => {
     load()
-    const channel = supabase
-      .channel('dishes-and-history')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dishes' }, () => load())
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return listen(
+      'dishes',
+      [
+        {
+          table: 'dishes',
+          on: (c) =>
+            setDishes((cur) => {
+              if (!cur) return cur
+              const change = c as Change<Dish>
+              if (change.eventType === 'DELETE') return applyChange(cur, change as never)
+              // Keep the stats: they come from the history, not from the dish row.
+              const row = change.new as Dish
+              const old = cur.find((d) => d.id === row.id)
+              return sortBy(upsert(cur, { ...row, times: old?.times ?? 0, weeksAgo: old?.weeksAgo ?? null }), 'name')
+            }),
+        },
+      ],
+      coalesce(load),
+    )
   }, [load])
 
-  return { dishes, error, reload: load }
+  /** A part of this dish was just eaten (+1) or un-ticked (-1) here. */
+  const ate = useCallback((dishId: number, delta: 1 | -1) => {
+    setDishes((cur) =>
+      cur?.map((d) =>
+        d.id === dishId
+          ? // Un-ticking keeps "eaten recently": the exact previous date comes back on the next reload.
+            { ...d, times: Math.max(0, d.times + delta), weeksAgo: delta > 0 ? 0 : d.weeksAgo }
+          : d,
+      ) ?? cur,
+    )
+  }, [])
+
+  return { dishes, error, reload: load, ate }
 }

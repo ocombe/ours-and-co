@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { applyChange, coalesce, listen, sortBy } from './live'
 
 /**
- * Loads a whole (small) table and keeps it live: any insert/update/delete,
- * from this phone, the other one or Claude, triggers a reload.
+ * Loads a whole (small) table once and keeps it live: each insert/update/delete,
+ * from this phone, the other one or Claude, is applied from the Realtime event,
+ * without reloading. `mutate` changes rows on screen right away (before the
+ * server confirms); the event that follows brings the confirmed row.
  */
-export function useTable<T>(table: string, order: string, ascending = true) {
+export function useTable<T extends { id: number }>(table: string, order: keyof T & string, ascending = true) {
   const [rows, setRows] = useState<T[] | null>(null)
   const [error, setError] = useState('')
 
@@ -17,16 +20,19 @@ export function useTable<T>(table: string, order: string, ascending = true) {
 
   useEffect(() => {
     load()
-    const channel = supabase
-      .channel('live-' + table)
-      .on('postgres_changes', { event: '*', schema: 'public', table }, () => load())
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [load, table])
+    return listen(
+      'live-' + table,
+      [{ table, on: (c) => setRows((rows) => rows && sortBy(applyChange(rows, c as never), order, ascending)) }],
+      coalesce(load),
+    )
+  }, [load, table, order, ascending])
 
-  return { rows, error, reload: load }
+  const mutate = useCallback(
+    (fn: (rows: T[]) => T[]) => setRows((rows) => rows && sortBy(fn(rows), order, ascending)),
+    [order, ascending],
+  )
+
+  return { rows, error, reload: load, mutate }
 }
 
 /** Remembered UI choice (tab, list…); silently not remembered in private mode. */
