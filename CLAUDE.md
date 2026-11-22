@@ -14,7 +14,7 @@ Use the Supabase connector (`execute_sql`) on project `xeobqdfkjbtclosrfhmi`.
 Prefer the helper functions in the `claude` schema over raw writes:
 
 ```sql
--- Search dishes by name, old FamilyWall spellings or ingredient (accent-insensitive)
+-- Search dishes by name, old FamilyWall spellings or ingredient (fuzzy: typos and accents forgiven, best first)
 select id, name, category, usual_moment, meals_covered from claude.find_dishes('courge');
 
 -- Add a wish for the next menu (dish name, accent/case-insensitive; must match one dish)

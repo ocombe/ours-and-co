@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Sheet } from './Sheet'
-import { fold } from './text'
+import { fuzzyFilter } from './fuzzy'
 import { defaultKind } from './generator'
 import { KIND_LABEL, type DishWithStats, type Kind } from './types'
 
@@ -21,11 +21,9 @@ export function DishPicker({ title, dishes, withKind, confirmLabel, onPick, onCl
   const [kind, setKind] = useState<Kind>('soir')
 
   const results = useMemo(() => {
-    const q = fold(query.trim())
-    return dishes
-      .filter((d) => !q || fold(d.name).includes(q) || d.aliases.some((a) => fold(a).includes(q)))
-      .sort((a, b) => b.times - a.times)
-      .slice(0, 40)
+    // Without a search: the most eaten first. With one: the best matches first.
+    const byTimes = [...dishes].sort((a, b) => b.times - a.times)
+    return fuzzyFilter(byTimes, query, (d) => [[d.name, 1], ...d.aliases.map((a): [string, number] => [a, 0.9])]).slice(0, 40)
   }, [dishes, query])
 
   function choose(d: DishWithStats) {

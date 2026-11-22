@@ -973,3 +973,41 @@ textarea:focus {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Text input with fuzzy suggestions (SuggestInput). */
+.suggest {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.suggest input {
+  width: 100%;
+}
+
+.suggest-list {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.suggest-list li {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.suggest-list li:hover,
+.suggest-list li.on {
+  background: var(--sweater-wash);
+}

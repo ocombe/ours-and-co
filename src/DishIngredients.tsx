@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { SuggestInput } from './SuggestInput'
+import { fold } from './text'
 import type { Ingredient, ShoppingList } from './types'
 
 interface Row {
@@ -40,7 +42,7 @@ export function DishIngredients({ dishId }: { dishId: number }) {
     const n = name.trim()
     if (!n) return
     setError('')
-    let ing = all.find((a) => a.name.toLowerCase() === n.toLowerCase())
+    let ing = all.find((a) => fold(a.name) === fold(n))
     if (!ing) {
       const created = await supabase.from('ingredients').insert({ name: n }).select('id, name, store').single()
       if (created.error) return setError(created.error.message)
@@ -104,12 +106,12 @@ export function DishIngredients({ dishId }: { dishId: number }) {
         </ul>
       )}
       <div className="add-row ing-add">
-        <input
-          list="all-ingredients"
+        <SuggestInput
           aria-label="Ingrédient"
           placeholder="Ingrédient"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={setName}
+          options={all.map((a) => a.name)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -123,11 +125,6 @@ export function DishIngredients({ dishId }: { dishId: number }) {
           Ajouter
         </button>
       </div>
-      <datalist id="all-ingredients">
-        {all.map((a) => (
-          <option key={a.id} value={a.name} />
-        ))}
-      </datalist>
       {error && <p className="error">{error}</p>}
     </fieldset>
   )

@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { remember, useTable } from './useTable'
 import { fold, fullMoment, shortMoment } from './text'
 import { slug } from './route'
+import { SuggestInput } from './SuggestInput'
 import { AISLES, aisleOf, guessAisle } from './aisles'
 import { LOCATIONS, type Ingredient, type ListItem, type Location, type Member, type ShoppingList } from './types'
 
@@ -209,21 +210,16 @@ export function CoursesScreen({ listSlug, onList }: Props) {
       </div>
 
       <form className="add-row" onSubmit={add}>
-        <input
-          list="known-products"
+        <SuggestInput
           aria-label={`Ajouter à ${current?.name}`}
           placeholder={`Ajouter à ${current?.name}…`}
           value={label}
-          onChange={(e) => setLabel(e.target.value)}
+          onChange={setLabel}
+          options={ingredients.rows?.map((i) => i.name) ?? []}
         />
         <input className="qty" aria-label="Quantité" placeholder="Qté" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
         <button className="btn honey">Ajouter</button>
       </form>
-      <datalist id="known-products">
-        {ingredients.rows?.map((i) => (
-          <option key={i.id} value={i.name} />
-        ))}
-      </datalist>
 
       {error && <p className="error">{error}</p>}
 

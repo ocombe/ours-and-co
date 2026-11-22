@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase } from './supabase'
 import { useDishes } from './data'
-import { fold } from './text'
+import { fuzzyScore } from './fuzzy'
 import { CATEGORIES, MOMENT_LABEL, type Dish } from './types'
 import { DishSheet } from './DishSheet'
 
@@ -34,15 +35,31 @@ export function DishesScreen() {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [editing, setEditing] = useState<Dish | 'new' | null>(null)
+  const { byDish: ingredientsOf, reload: reloadIngredients } = useDishIngredientNames()
+
+  /** Fuzzy match on the name, old FamilyWall names, then ingredients. */
+  const results = useMemo(() => {
+    if (!dishes || !query.trim()) return null
+    return dishes
+      .filter((d) => matchesFilter(d, filter))
+      .map((d) => {
+        const byName = Math.max(fuzzyScore(query, d.name), ...d.aliases.map((a) => fuzzyScore(query, a) * 0.9))
+        let via: string | undefined
+        let byIngredient = 0
+        for (const name of ingredientsOf.get(d.id) ?? []) {
+          const s = fuzzyScore(query, name) * 0.8
+          if (s > byIngredient) [byIngredient, via] = [s, name]
+        }
+        return { d, score: Math.max(byName, byIngredient), via: byIngredient > byName ? via : undefined }
+      })
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score || b.d.times - a.d.times)
+  }, [dishes, query, filter, ingredientsOf])
 
   const groups = useMemo(() => {
     if (!dishes) return []
-    const q = fold(query.trim())
-    const visible = dishes.filter(
-      (d) =>
-        matchesFilter(d, filter) &&
-        (!q || fold(d.name).includes(q) || d.aliases.some((a) => fold(a).includes(q))),
-    )
+    if (results) return [{ cat: 'Résultats', items: results.map((r) => r.d) }]
+    const visible = dishes.filter((d) => matchesFilter(d, filter))
     const order = [...CATEGORIES, ...new Set(visible.map((d) => d.category))]
     return [...new Set(order)]
       .map((cat) => ({
@@ -52,7 +69,8 @@ export function DishesScreen() {
           .sort((a, b) => b.times - a.times || a.name.localeCompare(b.name, 'fr')),
       }))
       .filter((g) => g.items.length > 0)
-  }, [dishes, query, filter])
+  }, [dishes, filter, results])
+  const viaIngredient = new Map(results?.filter((r) => r.via).map((r) => [r.d.id, r.via!]))
 
   const reviewCount = dishes?.filter((d) => d.to_review).length ?? 0
   const shown = groups.reduce((n, g) => n + g.items.length, 0)
@@ -69,8 +87,8 @@ export function DishesScreen() {
       <div className="search-bar">
         <input
           type="search"
-          placeholder="Chercher un plat…"
-          aria-label="Chercher un plat"
+          placeholder="Chercher un plat ou un ingrédient…"
+          aria-label="Chercher un plat ou un ingrédient"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -123,6 +141,7 @@ export function DishesScreen() {
                     {d.meals_covered > 1 && <span className="tag">{d.meals_covered} repas</span>}
                     {d.effort === 'long' && <span className="tag">long à faire</span>}
                     {d.kids_only ? <span className="tag">pour les filles</span> : d.kids_ok && <span className="tag">filles ok</span>}
+                    {viaIngredient.has(d.id) && <span className="muted">avec {viaIngredient.get(d.id)!.toLowerCase()}</span>}
                     {d.times > 0 && <span className="times">fait {d.times}×</span>}
                   </span>
                 </button>
@@ -136,13 +155,34 @@ export function DishesScreen() {
         <DishSheet
           dish={editing === 'new' ? null : editing}
           initialName={editing === 'new' ? query.trim() : ''}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null)
+            reloadIngredients() // they may have been edited in the sheet
+          }}
           onSaved={() => {
             setEditing(null)
             reload()
+            reloadIngredients()
           }}
         />
       )}
     </main>
   )
+}
+
+/** Ingredient names of each dish, for the search. */
+function useDishIngredientNames() {
+  const [byDish, setByDish] = useState(new Map<number, string[]>())
+  const reload = useCallback(async () => {
+    const { data } = await supabase.from('dish_ingredients').select('dish_id, ingredients(name)')
+    const map = new Map<number, string[]>()
+    for (const r of (data ?? []) as unknown as { dish_id: number; ingredients: { name: string } | null }[]) {
+      if (r.ingredients) map.set(r.dish_id, [...(map.get(r.dish_id) ?? []), r.ingredients.name])
+    }
+    setByDish(map)
+  }, [])
+  useEffect(() => {
+    reload()
+  }, [reload])
+  return { byDish, reload }
 }
