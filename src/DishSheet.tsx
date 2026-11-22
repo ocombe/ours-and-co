@@ -57,9 +57,18 @@ export function DishSheet({ dish, initialName, onClose, onSaved }: Props) {
     e.preventDefault()
     setSaving(true)
     setError('')
-    const row = {
-      ...draft,
+    // Only the editable columns: `dish` may carry computed stats (times, weeksAgo)
+    // and read-only fields (id, aliases) that must not be sent back.
+    const row: Draft = {
       name: draft.name.trim(),
+      category: draft.category,
+      usual_moment: draft.usual_moment,
+      meals_covered: draft.meals_covered,
+      kids_ok: draft.kids_ok,
+      season: draft.season,
+      effort: draft.effort,
+      favorite: draft.favorite,
+      to_review: draft.to_review,
       notes: draft.notes?.trim() || null,
       link: draft.link?.trim() || null,
     }
