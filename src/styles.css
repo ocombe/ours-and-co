@@ -446,8 +446,50 @@ textarea:focus {
   color: var(--fur);
 }
 
-.sheet::backdrop {
-  background: rgb(40 25 18 / 0.45);
+.sheet::backdrop,
+.confirm::backdrop {
+  background: rgb(20 12 8 / 0.6);
+  backdrop-filter: blur(2px);
+}
+
+@media (prefers-color-scheme: dark) {
+  /* The page and the sheet share the same dark colour: darken more and outline the sheet. */
+  .sheet::backdrop,
+  .confirm::backdrop {
+    background: rgb(0 0 0 / 0.7);
+  }
+  .sheet,
+  .confirm {
+    outline: 1px solid var(--line);
+  }
+}
+
+.confirm {
+  width: calc(100% - 2 * var(--gutter));
+  max-width: 420px;
+  margin: auto;
+  padding: 20px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--linen);
+  color: var(--fur);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
+}
+
+.confirm h2 {
+  font-size: 1.2rem;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+
+.confirm p {
+  margin: 0 0 16px;
+}
+
+.confirm-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 @media (min-width: 700px) {

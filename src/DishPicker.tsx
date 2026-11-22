@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { Sheet } from './Sheet'
 import { fold } from './text'
 import { defaultKind } from './generator'
 import { KIND_LABEL, type DishWithStats, type Kind } from './types'
@@ -15,14 +16,9 @@ interface Props {
 
 /** Search a dish and pick it, optionally choosing the kind of meal. */
 export function DishPicker({ title, dishes, withKind, confirmLabel, onPick, onClose }: Props) {
-  const dialog = useRef<HTMLDialogElement>(null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<DishWithStats | null>(null)
   const [kind, setKind] = useState<Kind>('soir')
-
-  useEffect(() => {
-    dialog.current?.showModal()
-  }, [])
 
   const results = useMemo(() => {
     const q = fold(query.trim())
@@ -42,63 +38,54 @@ export function DishPicker({ title, dishes, withKind, confirmLabel, onPick, onCl
   }
 
   return (
-    <dialog ref={dialog} className="sheet" onClose={onClose} aria-labelledby="picker-title">
-      <div className="stack">
-        <div className="sheet-head">
-          <h2 id="picker-title">{title}</h2>
-          <button type="button" className="btn ghost small" onClick={() => dialog.current?.close()}>
-            Fermer
-          </button>
-        </div>
-
-        {selected ? (
-          <>
-            <p className="picked">{selected.name}</p>
-            <fieldset className="field">
-              <legend>Pour quels repas</legend>
-              <div className="segmented">
-                {(['midi', 'weekend', 'soir'] as Kind[]).map((k) => (
-                  <label key={k} className={kind === k ? 'on' : ''}>
-                    <input type="radio" checked={kind === k} onChange={() => setKind(k)} />
-                    {KIND_LABEL[k]}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <div className="sheet-actions">
-              <button className="btn honey" onClick={() => onPick(selected, kind)}>
-                {confirmLabel}
-              </button>
-              <button className="btn ghost" onClick={() => setSelected(null)}>
-                Choisir un autre plat
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <input
-              type="search"
-              autoFocus
-              placeholder="Chercher un plat…"
-              aria-label="Chercher un plat"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <ul className="dish-list picker-list">
-              {results.map((d) => (
-                <li key={d.id}>
-                  <button className="dish-row" onClick={() => choose(d)}>
-                    <span className="dish-name">{d.name}</span>
-                  </button>
-                </li>
+    <Sheet title={title} onClose={onClose}>
+      {selected ? (
+        <>
+          <p className="picked">{selected.name}</p>
+          <fieldset className="field">
+            <legend>Pour quels repas</legend>
+            <div className="segmented">
+              {(['midi', 'weekend', 'soir'] as Kind[]).map((k) => (
+                <label key={k} className={kind === k ? 'on' : ''}>
+                  <input type="radio" checked={kind === k} onChange={() => setKind(k)} />
+                  {KIND_LABEL[k]}
+                </label>
               ))}
-            </ul>
-            {results.length === 0 && (
-              <p className="muted">Aucun plat ne correspond. Ajoute-le d’abord dans l’onglet Plats.</p>
-            )}
-          </>
-        )}
-      </div>
-    </dialog>
+            </div>
+          </fieldset>
+          <div className="sheet-actions">
+            <button className="btn honey" onClick={() => onPick(selected, kind)}>
+              {confirmLabel}
+            </button>
+            <button className="btn ghost" onClick={() => setSelected(null)}>
+              Choisir un autre plat
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <input
+            type="search"
+            autoFocus
+            placeholder="Chercher un plat…"
+            aria-label="Chercher un plat"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <ul className="dish-list picker-list">
+            {results.map((d) => (
+              <li key={d.id}>
+                <button className="dish-row" onClick={() => choose(d)}>
+                  <span className="dish-name">{d.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {results.length === 0 && (
+            <p className="muted">Aucun plat ne correspond. Ajoute-le d’abord dans l’onglet Plats.</p>
+          )}
+        </>
+      )}
+    </Sheet>
   )
 }

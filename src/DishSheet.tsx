@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { supabase } from './supabase'
+import { Sheet } from './Sheet'
 import { DishIngredients } from './DishIngredients'
 import {
   CATEGORIES,
@@ -30,6 +31,25 @@ function emptyDraft(name: string): Draft {
   }
 }
 
+/** The columns the sheet edits, cleaned up as they will be saved. */
+function editable(d: Draft): Draft {
+  // `dish` may carry computed stats (times, weeksAgo) and read-only fields (id, aliases)
+  // that must not be sent back.
+  return {
+    name: d.name.trim(),
+    category: d.category,
+    usual_moment: d.usual_moment,
+    meals_covered: d.meals_covered,
+    kids_ok: d.kids_ok,
+    season: d.season,
+    effort: d.effort,
+    favorite: d.favorite,
+    to_review: d.to_review,
+    notes: d.notes?.trim() || null,
+    link: d.link?.trim() || null,
+  }
+}
+
 interface Props {
   dish: Dish | null
   initialName: string
@@ -39,39 +59,26 @@ interface Props {
 
 /** Bottom sheet to create or edit a dish. */
 export function DishSheet({ dish, initialName, onClose, onSaved }: Props) {
-  const dialog = useRef<HTMLDialogElement>(null)
-  const [draft, setDraft] = useState<Draft>(() => (dish ? { ...dish } : emptyDraft(initialName)))
+  const initial = useMemo(() => editable(dish ? { ...dish } : emptyDraft(initialName)), [dish, initialName])
+  const [draft, setDraft] = useState<Draft>(initial)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
-
-  useEffect(() => {
-    dialog.current?.showModal()
-  }, [])
+  const dirty = JSON.stringify(editable(draft)) !== JSON.stringify(initial)
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((d) => ({ ...d, [key]: value }))
   }
 
-  async function save(e: FormEvent) {
-    e.preventDefault()
+  /** Saves the dish; true when it worked. */
+  async function persist(): Promise<boolean> {
+    const row = editable(draft)
+    if (!row.name) {
+      setError('Le plat doit avoir un nom.')
+      return false
+    }
     setSaving(true)
     setError('')
-    // Only the editable columns: `dish` may carry computed stats (times, weeksAgo)
-    // and read-only fields (id, aliases) that must not be sent back.
-    const row: Draft = {
-      name: draft.name.trim(),
-      category: draft.category,
-      usual_moment: draft.usual_moment,
-      meals_covered: draft.meals_covered,
-      kids_ok: draft.kids_ok,
-      season: draft.season,
-      effort: draft.effort,
-      favorite: draft.favorite,
-      to_review: draft.to_review,
-      notes: draft.notes?.trim() || null,
-      link: draft.link?.trim() || null,
-    }
     const { error } = dish
       ? await supabase.from('dishes').update(row).eq('id', dish.id)
       : await supabase.from('dishes').insert(row)
@@ -80,9 +87,14 @@ export function DishSheet({ dish, initialName, onClose, onSaved }: Props) {
       setError(
         error.code === '23505' ? `Un plat « ${row.name} » existe déjà.` : `Enregistrement impossible : ${error.message}`,
       )
-      return
+      return false
     }
-    onSaved()
+    return true
+  }
+
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    if (await persist()) onSaved()
   }
 
   async function remove() {
@@ -98,15 +110,17 @@ export function DishSheet({ dish, initialName, onClose, onSaved }: Props) {
   }
 
   return (
-    <dialog ref={dialog} className="sheet" onClose={onClose} aria-labelledby="sheet-title">
+    <Sheet
+      title={dish ? 'Modifier le plat' : 'Nouveau plat'}
+      onClose={onClose}
+      dirty={dirty}
+      onSave={async () => {
+        if (!(await persist())) return false
+        onSaved()
+        return true
+      }}
+    >
       <form onSubmit={save} className="stack">
-        <div className="sheet-head">
-          <h2 id="sheet-title">{dish ? 'Modifier le plat' : 'Nouveau plat'}</h2>
-          <button type="button" className="btn ghost small" onClick={() => dialog.current?.close()}>
-            Fermer
-          </button>
-        </div>
-
         {dish?.to_review && (
           <div className="notice">
             <p>Ce plat a été classé automatiquement. Vérifie le moment et les infos.</p>
@@ -230,7 +244,7 @@ export function DishSheet({ dish, initialName, onClose, onSaved }: Props) {
             ))}
         </div>
       </form>
-    </dialog>
+    </Sheet>
   )
 }
 
