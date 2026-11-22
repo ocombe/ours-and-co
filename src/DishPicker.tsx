@@ -45,7 +45,7 @@ export function DishPicker({ title, dishes, withKind, confirmLabel, onPick, onCl
           <fieldset className="field">
             <legend>Pour quels repas</legend>
             <div className="segmented">
-              {(['midi', 'weekend', 'soir'] as Kind[]).map((k) => (
+              {(['midi', 'weekend', 'soir', 'kids'] as Kind[]).map((k) => (
                 <label key={k} className={kind === k ? 'on' : ''}>
                   <input type="radio" checked={kind === k} onChange={() => setKind(k)} />
                   {KIND_LABEL[k]}

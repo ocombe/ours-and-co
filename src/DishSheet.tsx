@@ -22,6 +22,7 @@ function emptyDraft(name: string): Draft {
     usual_moment: 'soir',
     meals_covered: 1,
     kids_ok: null,
+    kids_only: false,
     season: 'all',
     effort: null,
     favorite: false,
@@ -41,6 +42,7 @@ function editable(d: Draft): Draft {
     usual_moment: d.usual_moment,
     meals_covered: d.meals_covered,
     kids_ok: d.kids_ok,
+    kids_only: d.kids_only,
     season: d.season,
     effort: d.effort,
     favorite: d.favorite,
@@ -186,6 +188,18 @@ export function DishSheet({ dish, initialName, onClose, onSaved }: Props) {
           ]}
           onChange={(v) => set('kids_ok', v === 'unknown' ? null : v === 'yes')}
         />
+
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={draft.kids_only}
+            onChange={(e) => {
+              set('kids_only', e.target.checked)
+              if (e.target.checked) set('kids_ok', true)
+            }}
+          />
+          Uniquement pour les filles (ne compte pas dans les repas de la semaine)
+        </label>
 
         <Segmented
           label="Saison"

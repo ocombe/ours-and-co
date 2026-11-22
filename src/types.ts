@@ -9,6 +9,8 @@ export interface Dish {
   usual_moment: Moment
   meals_covered: number
   kids_ok: boolean | null
+  /** Only for the girls: not counted in the meals to cover. */
+  kids_only: boolean
   season: Season
   effort: Effort | null
   favorite: boolean
@@ -26,12 +28,14 @@ export interface DishWithStats extends Dish {
   weeksAgo: number | null
 }
 
-export type Kind = 'midi' | 'weekend' | 'soir'
+/** Which meals a menu item covers. `kids`: the girls only, not counted in the needs. */
+export type Kind = 'midi' | 'weekend' | 'soir' | 'kids'
 
 export const KIND_LABEL: Record<Kind, string> = {
   weekend: 'Midis du week-end (à 4)',
   midi: 'Midis de semaine',
   soir: 'Soirs',
+  kids: 'Pour les filles',
 }
 
 export interface Menu {

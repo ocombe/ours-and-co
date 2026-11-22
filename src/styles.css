@@ -13,6 +13,10 @@
   --sweater: #2c7a96;
   --sweater-wash: #dcecf2;
   --danger: #a8321f;
+  --danger-ink: #ffffff;
+  /* Top bar: brown fur in both themes (--fur turns light in dark mode). */
+  --bar: #4a2f22;
+  --bar-ink: #fbf3ea;
 
   --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
   --font-body: 'Atkinson Hyperlegible', system-ui, sans-serif;
@@ -32,6 +36,8 @@
     --sweater: #78bdd6;
     --sweater-wash: #1f3a44;
     --danger: #f08f7c;
+    --danger-ink: #1d1512;
+    --bar: #3a251b;
     color-scheme: dark;
   }
 }
@@ -142,7 +148,7 @@ h1 {
 
 .btn.danger {
   background: var(--danger);
-  color: #fff;
+  color: var(--danger-ink);
 }
 
 .btn:disabled {
@@ -165,8 +171,8 @@ h1 {
   align-items: center;
   justify-content: space-between;
   padding: calc(env(safe-area-inset-top) + 10px) var(--gutter) 10px;
-  background: var(--fur);
-  color: #fbf3ea;
+  background: var(--bar);
+  color: var(--bar-ink);
 }
 
 .topbar .btn.ghost {
@@ -274,7 +280,8 @@ textarea:focus {
   color: var(--linen);
 }
 
-.chip .count {
+.chip .count,
+.segmented .count {
   margin-left: 6px;
   font-size: 0.8rem;
   background: var(--honey);
@@ -540,6 +547,7 @@ textarea:focus {
 }
 
 .segmented label {
+  position: relative;
   font-weight: 700;
   font-size: 0.9rem;
   border: 2px solid var(--line);
@@ -672,8 +680,10 @@ textarea:focus {
   gap: 10px;
 }
 
-.actions-bar .btn.honey {
-  flex: 1;
+/* The two ways to build the menu share the first row; the other actions wrap below. */
+.actions-bar .btn.honey,
+.actions-bar .btn.choose {
+  flex: 1 1 220px;
 }
 
 .need {

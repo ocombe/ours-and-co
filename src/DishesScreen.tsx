@@ -122,7 +122,7 @@ export function DishesScreen() {
                     <span className={'moment m-' + d.usual_moment}>{MOMENT_LABEL[d.usual_moment]}</span>
                     {d.meals_covered > 1 && <span className="tag">{d.meals_covered} repas</span>}
                     {d.effort === 'long' && <span className="tag">long à faire</span>}
-                    {d.kids_ok && <span className="tag">filles ok</span>}
+                    {d.kids_only ? <span className="tag">pour les filles</span> : d.kids_ok && <span className="tag">filles ok</span>}
                     {d.times > 0 && <span className="times">fait {d.times}×</span>}
                   </span>
                 </button>

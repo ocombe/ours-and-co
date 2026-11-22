@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { useDishes } from './data'
-import { covered, fill, isoDate, mealsFor, need, nextSaturday, replacement } from './generator'
+import { COUNTED_KINDS, covered, fill, isoDate, mealsFor, need, nextSaturday, replacement } from './generator'
 import { longDate } from './text'
 import { DishPicker } from './DishPicker'
+import { ChooseSheet } from './ChooseSheet'
 import { dishesUsingReserve, fillShopping } from './shopping'
-import { KIND_LABEL, type Kind, type Menu, type MenuItem, type Wish } from './types'
+import { KIND_LABEL, type DishWithStats, type Kind, type Menu, type MenuItem, type Wish } from './types'
 
-const KINDS: Kind[] = ['weekend', 'midi', 'soir']
-const NEED_FIELD: Record<Kind, keyof Menu> = { midi: 'need_midi', weekend: 'need_weekend', soir: 'need_soir' }
+const NEED_FIELD: Record<Exclude<Kind, 'kids'>, keyof Menu> = { midi: 'need_midi', weekend: 'need_weekend', soir: 'need_soir' }
 const SOURCE_TAG: Partial<Record<MenuItem['source'], string>> = { leftover: 'reste', wish: 'envie' }
 
 export function MenuScreen() {
@@ -18,7 +18,7 @@ export function MenuScreen() {
   const [wishes, setWishes] = useState<Wish[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [picker, setPicker] = useState<'menu' | 'wish' | null>(null)
+  const [picker, setPicker] = useState<'menu' | 'wish' | 'choose' | null>(null)
   const [shopMsg, setShopMsg] = useState('')
 
   const load = useCallback(async () => {
@@ -91,7 +91,7 @@ export function MenuScreen() {
   }
 
   async function setNeed(kind: Kind, value: number) {
-    if (!menu) return
+    if (!menu || kind === 'kids') return
     await run(() => supabase.from('menus').update({ [NEED_FIELD[kind]]: value }).eq('id', menu.id))
   }
 
@@ -105,6 +105,18 @@ export function MenuScreen() {
         if (r.error) return r
       }
       return usedWishes.length ? supabase.from('wishes').delete().in('id', usedWishes) : { error: null }
+    })
+  }
+
+  /** Add one dish to the menu (from a wish: the wish is used up). */
+  async function addItem(dish: DishWithStats, kind: Kind, source: MenuItem['source'], wish?: Wish) {
+    if (!menu) return
+    await run(async () => {
+      const r = await supabase
+        .from('menu_items')
+        .insert({ menu_id: menu.id, dish_id: dish.id, label: dish.name, kind, meals: mealsFor(dish, kind), source })
+      if (r.error || !wish) return r
+      return supabase.from('wishes').delete().eq('id', wish.id)
     })
   }
 
@@ -160,7 +172,10 @@ export function MenuScreen() {
           dish_id: item.dish_id,
           label: item.label,
           eaten_on: isoDate(new Date()),
-          moment: item.kind === 'soir' ? 'soir' : 'midi',
+          moment:
+            item.kind === 'soir' || (item.kind === 'kids' && dishById.get(item.dish_id ?? -1)?.usual_moment !== 'midi')
+              ? 'soir'
+              : 'midi',
           people: item.kind === 'weekend' ? 4 : 2,
           menu_item_id: item.id,
         })
@@ -187,7 +202,7 @@ export function MenuScreen() {
     )
   }
 
-  const totalMissing = KINDS.reduce((n, k) => n + Math.max(0, need(menu, k) - covered(items, k)), 0)
+  const totalMissing = COUNTED_KINDS.reduce((n, k) => n + Math.max(0, need(menu, k) - covered(items, k)), 0)
 
   return (
     <main className="screen">
@@ -209,7 +224,7 @@ export function MenuScreen() {
           </button>
         </div>
         {wishes.length === 0 ? (
-          <p className="muted small">Un plat en promo, une envie ? Il passera en premier au prochain « Remplir ».</p>
+          <p className="muted small">Un plat en promo, une envie ? Il passera en premier quand tu rempliras le menu.</p>
         ) : (
           <ul className="wish-list">
             {wishes.map((w) => (
@@ -230,7 +245,10 @@ export function MenuScreen() {
 
       <div className="actions-bar">
         <button className="btn honey" disabled={busy || !dishes || (totalMissing === 0 && wishes.length === 0)} onClick={fillMenu}>
-          {totalMissing > 0 ? `Remplir (${totalMissing} repas à prévoir)` : wishes.length ? 'Ajouter les envies' : 'Tout est prévu'}
+          {totalMissing > 0 ? `Tout remplir (${totalMissing} repas)` : wishes.length ? 'Ajouter les envies' : 'Tout est prévu'}
+        </button>
+        <button className="btn ghost choose" disabled={!dishes} onClick={() => setPicker('choose')}>
+          Choisir un par un
         </button>
         <button className="btn ghost" disabled={!dishes} onClick={() => setPicker('menu')}>
           Ajouter un plat
@@ -243,27 +261,30 @@ export function MenuScreen() {
 
       {error && <p className="error">{error}</p>}
 
-      {KINDS.map((kind) => {
+      {[...COUNTED_KINDS, 'kids' as const].map((kind) => {
         const list = items.filter((i) => i.kind === kind)
+        if (kind === 'kids' && list.length === 0) return null
         const have = covered(items, kind)
         const want = need(menu, kind)
         return (
           <section key={kind} className="group" aria-labelledby={`k-${kind}`}>
             <div className="row-between">
               <h2 id={`k-${kind}`}>{KIND_LABEL[kind]}</h2>
-              <div className="need" role="group" aria-label={`Repas à prévoir : ${KIND_LABEL[kind]}`}>
-                <span className={have >= want ? 'ok' : ''}>
-                  {have}/{want}
-                </span>
-                <button className="icon-btn" aria-label="Un repas de moins" disabled={busy || want <= 0} onClick={() => setNeed(kind, want - 1)}>
-                  −
-                </button>
-                <button className="icon-btn" aria-label="Un repas de plus" disabled={busy} onClick={() => setNeed(kind, want + 1)}>
-                  +
-                </button>
-              </div>
+              {kind !== 'kids' && (
+                <div className="need" role="group" aria-label={`Repas à prévoir : ${KIND_LABEL[kind]}`}>
+                  <span className={have >= want ? 'ok' : ''}>
+                    {have}/{want}
+                  </span>
+                  <button className="icon-btn" aria-label="Un repas de moins" disabled={busy || want <= 0} onClick={() => setNeed(kind, want - 1)}>
+                    −
+                  </button>
+                  <button className="icon-btn" aria-label="Un repas de plus" disabled={busy} onClick={() => setNeed(kind, want + 1)}>
+                    +
+                  </button>
+                </div>
+              )}
             </div>
-            {have > want && (
+            {kind !== 'kids' && have > want && (
               <p className="muted small">
                 {have - want} repas en trop : ils passeront en reste la semaine suivante s’ils ne sont pas mangés.
               </p>
@@ -317,7 +338,18 @@ export function MenuScreen() {
         )
       })}
 
-      {picker && dishes && (
+      {picker === 'choose' && dishes && (
+        <ChooseSheet
+          menu={menu}
+          items={items}
+          dishes={dishes}
+          wishes={wishes}
+          onPick={(dish, kind, wish) => addItem(dish, kind, wish ? 'wish' : 'generated', wish)}
+          onClose={() => setPicker(null)}
+        />
+      )}
+
+      {(picker === 'menu' || picker === 'wish') && dishes && (
         <DishPicker
           title={picker === 'menu' ? 'Ajouter un plat au menu' : 'Ajouter une envie'}
           dishes={dishes}
@@ -326,18 +358,8 @@ export function MenuScreen() {
           onClose={() => setPicker(null)}
           onPick={(dish, kind) => {
             setPicker(null)
-            run(() =>
-              picker === 'menu'
-                ? supabase.from('menu_items').insert({
-                    menu_id: menu.id,
-                    dish_id: dish.id,
-                    label: dish.name,
-                    kind,
-                    meals: mealsFor(dish, kind),
-                    source: 'manual',
-                  })
-                : supabase.from('wishes').insert({ dish_id: dish.id }),
-            )
+            if (picker === 'menu') addItem(dish, kind, 'manual')
+            else run(() => supabase.from('wishes').insert({ dish_id: dish.id }))
           }}
         />
       )}

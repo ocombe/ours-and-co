@@ -17,7 +17,11 @@ export function mealsFor(dish: DishWithStats, kind: Kind) {
   return kind === 'weekend' ? Math.max(1, Math.floor(dish.meals_covered / 2)) : dish.meals_covered
 }
 
+/** Kinds that count towards the meals to cover, in the order the generator fills them. */
+export const COUNTED_KINDS: Kind[] = ['weekend', 'midi', 'soir']
+
 export function need(menu: Menu, kind: Kind) {
+  if (kind === 'kids') return 0
   return kind === 'midi' ? menu.need_midi : kind === 'weekend' ? menu.need_weekend : menu.need_soir
 }
 
@@ -28,6 +32,7 @@ export function covered(items: Pick<MenuItem, 'kind' | 'meals'>[], kind: Kind) {
 
 /** Kind a dish naturally goes to. */
 export function defaultKind(dish: DishWithStats): Kind {
+  if (dish.kids_only) return 'kids'
   return dish.usual_moment === 'midi' ? 'midi' : 'soir'
 }
 
@@ -40,6 +45,8 @@ function inSeason(dish: DishWithStats, now: Date) {
 
 function fitsKind(dish: DishWithStats, kind: Kind) {
   if (dish.usual_moment === 'dessert') return false
+  // Kids-only dishes only go to the girls' part, never to the grown-ups' meals.
+  if (kind === 'kids' || dish.kids_only) return kind === 'kids' && dish.kids_only
   if (kind === 'soir') return dish.usual_moment === 'soir' || dish.usual_moment === 'both'
   if (kind === 'weekend' && dish.kids_ok === false) return false
   return dish.usual_moment === 'midi' || dish.usual_moment === 'both'
@@ -140,7 +147,7 @@ export function fill(
   }
 
   // 2. Fill each kind until covered. Weekend first: it has the strictest rule.
-  for (const kind of ['weekend', 'midi', 'soir'] as Kind[]) {
+  for (const kind of COUNTED_KINDS) {
     let guard = 30
     while (covered(all, kind) < need(menu, kind) && guard-- > 0) {
       const dish = pickDish(kind, { dishes, chosen, boost: opts.boost, now: opts.now, random: opts.random })
@@ -150,6 +157,51 @@ export function fill(
   }
 
   return { add, usedWishes }
+}
+
+export interface Proposal {
+  dish: DishWithStats
+  /** Set when the dish comes from a wish. */
+  wish?: Wish
+}
+
+/**
+ * "Choisir un par un": a few dishes to choose from for one kind of meal. Matching wishes
+ * come first, then dishes drawn with the same rules as "Remplir". Each proposal counts as
+ * already chosen for the next draw: they differ in category when possible, and only one can be long.
+ */
+export function proposals(
+  kind: Kind,
+  items: MenuItem[],
+  dishes: DishWithStats[],
+  wishes: Wish[],
+  opts: { count?: number; exclude?: Set<number>; boost?: Set<number>; now?: Date; random?: () => number } = {},
+): Proposal[] {
+  const count = opts.count ?? 4
+  const byId = new Map(dishes.map((d) => [d.id, d]))
+  const chosen = items.map((i) => (i.dish_id != null ? byId.get(i.dish_id) : undefined)).filter((d) => !!d)
+  const inMenu = new Set(chosen.map((d) => d.id))
+  const out: Proposal[] = []
+
+  for (const w of wishes) {
+    const dish = byId.get(w.dish_id)
+    if (!dish || inMenu.has(dish.id) || out.length >= count) continue
+    const k = defaultKind(dish)
+    if (k === kind || (kind === 'weekend' && k === 'midi' && dish.kids_ok)) out.push({ dish, wish: w })
+  }
+
+  const exclude = new Set([...(opts.exclude ?? []), ...out.map((p) => p.dish.id)])
+  while (out.length < count) {
+    const ctx = { dishes, chosen: [...chosen, ...out.map((p) => p.dish)], boost: opts.boost, now: opts.now, random: opts.random }
+    // A real choice: a category not proposed yet if there is one, else any.
+    const shown = new Set(out.map((p) => p.dish.category))
+    const otherCategory = new Set([...exclude, ...dishes.filter((d) => shown.has(d.category)).map((d) => d.id)])
+    const dish = pickDish(kind, { ...ctx, exclude: otherCategory }) ?? pickDish(kind, { ...ctx, exclude })
+    if (!dish) break
+    out.push({ dish })
+    exclude.add(dish.id)
+  }
+  return out
 }
 
 /** "Remplacer": another dish for the same kind of meal. */

@@ -20,7 +20,7 @@ select id, name, category, usual_moment, meals_covered from claude.find_dishes('
 -- Add a wish for the next menu (dish name, accent/case-insensitive; must match one dish)
 select * from claude.add_wish('Raclette', 'envie de fromage');
 
--- Add a dish to the current (latest) menu; kind = 'midi' | 'weekend' | 'soir' (default from the dish)
+-- Add a dish to the current (latest) menu; kind = 'midi' | 'weekend' | 'soir' | 'kids' (default from the dish)
 select * from claude.add_to_menu('Poulet rôti', 'weekend');
 
 -- Add to a shopping list by list name (Marché, Carrefour, Picard, Courses, Pharmacie, Vrac, Bricolage, Ikea)
@@ -40,11 +40,11 @@ Tables (all in `public`, protected by RLS for household members; Claude runs as 
 
 | Table | What |
 |---|---|
-| `dishes` | the catalogue. `usual_moment`: midi / soir / both / dessert (a preference, not a rule). `meals_covered`: how many meals one batch covers for 2 people. `effort`: quick / normal / long. `kids_ok`: null = unknown. `to_review`: imported guess, to check. `aliases`: old FamilyWall names. |
+| `dishes` | the catalogue. `usual_moment`: midi / soir / both / dessert (a preference, not a rule). `meals_covered`: how many meals one batch covers for 2 people. `effort`: quick / normal / long. `kids_ok`: null = unknown. `kids_only`: only for the girls (e.g. cordons bleus), not counted in the week's meals. `to_review`: imported guess, to check. `aliases`: old FamilyWall names. |
 | `ingredients`, `dish_ingredients` | products with preferred `store` (a list name) and `aisle`; dish quantities are for 2 people |
 | `history` | meals eaten. FamilyWall imports have `eaten_on` null and `legacy_rank` (higher = more recent) |
 | `menus` | one per week, `starts_on` = Saturday; `need_midi` / `need_weekend` / `need_soir` = meals to cover |
-| `menu_items` | dishes of a menu: `kind` midi/weekend/soir, `meals` covered, `eaten` parts; `source` generated/manual/wish/leftover |
+| `menu_items` | dishes of a menu: `kind` midi/weekend/soir/kids (kids = for the girls, not counted in the needs), `meals` covered, `eaten` parts; `source` generated/manual/wish/leftover |
 | `wishes` | dishes to put first in the next menu |
 | `lists`, `list_items` | shopping lists and their items (`aisle` = rayon, `menu_id` set when filled from a menu) |
 | `reserve_items` | what we already have (freezer, fridge, pantry); kept off shopping lists, favoured by the generator |
@@ -53,6 +53,7 @@ Tables (all in `public`, protected by RLS for household members; Claude runs as 
 ## Household rules (for suggestions and menus)
 
 - 2 people per meal; weekend lunches are for 4 (with the kids) and need `kids_ok` dishes.
+- Some dishes are only for the girls (`kids_only`): they go to the "Pour les filles" part and do not count.
 - Meat dishes are usually lunch; quiches, salmon dishes, croque monsieur, caillettes, saucisson brioché are usually dinner.
 - One dish can cover several meals (quiche = 2 dinners, roast chicken = 3 lunches).
 - Long dishes (couscous, paella…) are rare: at most one per week.
