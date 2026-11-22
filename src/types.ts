@@ -114,6 +114,8 @@ export interface ListItem {
   /** Member who added it; null when added by Claude or imported. */
   added_by: string | null
   created_at: string
+  /** Last change: added, renamed, quantity, aisle, ticked… */
+  updated_at: string
 }
 
 export interface Member {

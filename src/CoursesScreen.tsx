@@ -17,7 +17,7 @@ const byName = new Intl.Collator('fr', { sensitivity: 'base', numeric: true })
 
 function compare(sort: Sort) {
   return (a: ListItem, b: ListItem) => {
-    const c = sort.by === 'name' ? byName.compare(a.label, b.label) : Date.parse(a.created_at) - Date.parse(b.created_at) || a.id - b.id
+    const c = sort.by === 'name' ? byName.compare(a.label, b.label) : Date.parse(a.updated_at) - Date.parse(b.updated_at) || a.id - b.id
     return sort.dir === 'asc' ? c : -c
   }
 }
@@ -126,8 +126,8 @@ export function CoursesScreen() {
             </span>
           </label>
           <AddedBy member={members.find((m) => m.user_id === it.added_by)} />
-          <time className="added-at muted" dateTime={it.created_at} title={`Ajouté le ${fullMoment(it.created_at)}`}>
-            {shortMoment(it.created_at)}
+          <time className="added-at muted" dateTime={it.updated_at} title={`Modifié le ${fullMoment(it.updated_at)}`}>
+            {shortMoment(it.updated_at)}
           </time>
           <button
             className="icon-btn"
@@ -219,7 +219,7 @@ export function CoursesScreen() {
       ) : (
         <div className="sort-head" role="group" aria-label="Trier">
           <SortButton label="Article" by="name" sort={sort} onClick={sortBy} />
-          <SortButton label="Ajouté" by="date" sort={sort} onClick={sortBy} />
+          <SortButton label="Modifié" by="date" sort={sort} onClick={sortBy} />
         </div>
       )}
 
