@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
+
+/** Sheets on screen. Each one has its own step in the browser history. */
+const openSheets = new Set<string>()
+
+// Forward into the step of a sheet that is already closed: step back over it.
+window.addEventListener('popstate', () => {
+  const sheet = history.state?.sheet
+  if (sheet && !openSheets.has(sheet)) history.back()
+})
 
 interface Props {
   title: string
@@ -11,17 +20,49 @@ interface Props {
 }
 
 /**
- * Modal bottom sheet. Closes with its button, Escape / Android back, or a tap on the
- * backdrop; when there are unsaved changes it asks what to do first.
+ * Modal bottom sheet. Closes with its button, Escape / Android back, a tap on the
+ * backdrop or the browser's back button; when there are unsaved changes it asks what
+ * to do first.
  */
 export function Sheet({ title, onClose, dirty = false, onSave, children }: Props) {
   const dialog = useRef<HTMLDialogElement>(null)
   const downOutside = useRef(false)
   const [confirming, setConfirming] = useState(false)
+  const id = useId()
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
 
   useEffect(() => {
     dialog.current?.showModal()
   }, [])
+
+  // Opening adds a history step (same URL), so the browser's back button closes the sheet.
+  useEffect(() => {
+    openSheets.add(id)
+    if (history.state?.sheet !== id) history.pushState({ sheet: id }, '')
+
+    function onPop() {
+      if (history.state?.sheet === id) return
+      if (dirtyRef.current) {
+        // Unsaved changes: stay (put the step back) and ask.
+        history.pushState({ sheet: id }, '')
+        setConfirming(true)
+      } else {
+        dialog.current?.close()
+      }
+    }
+    window.addEventListener('popstate', onPop)
+
+    return () => {
+      window.removeEventListener('popstate', onPop)
+      openSheets.delete(id)
+      // Closed some other way: remove its history step. Deferred, because React's dev
+      // mode unmounts and remounts once on purpose.
+      setTimeout(() => {
+        if (!openSheets.has(id) && history.state?.sheet === id) history.back()
+      })
+    }
+  }, [id])
 
   function requestClose() {
     if (dirty) setConfirming(true)

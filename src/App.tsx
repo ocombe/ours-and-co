@@ -7,6 +7,7 @@ import { MenuScreen } from './MenuScreen'
 import { CoursesScreen } from './CoursesScreen'
 import { ReserveScreen } from './ReserveScreen'
 import { remember } from './useTable'
+import { useHashPath } from './route'
 
 const TABS = [
   { id: 'menu', label: 'Menu' },
@@ -26,12 +27,15 @@ type Membership = 'checking' | 'member' | 'outsider'
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [membership, setMembership] = useState<Membership>('checking')
-  const [tab, setTabState] = useState<Tab>(initialTab)
+  const { path, go } = useHashPath()
+  // The URL says which tab; without one (first visit), the last tab used.
+  const tab: Tab = TABS.find((t) => t.id === path?.[0])?.id ?? initialTab()
 
-  function setTab(t: Tab) {
-    setTabState(t)
-    remember('tab', t)
-  }
+  useEffect(() => {
+    remember('tab', tab)
+    // Write the tab in the URL, without adding a history step (not over the sign-in callback).
+    if (!path && !location.hash) go([tab], true)
+  }, [tab, path, go])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -83,7 +87,7 @@ export function App() {
       </header>
       {tab === 'menu' && <MenuScreen />}
       {tab === 'plats' && <DishesScreen />}
-      {tab === 'courses' && <CoursesScreen />}
+      {tab === 'courses' && <CoursesScreen listSlug={path?.[1]} onList={(s, replace) => go(['courses', s], replace)} />}
       {tab === 'reserve' && <ReserveScreen />}
       <nav className="tabbar" aria-label="Sections">
         {TABS.map((t) => (
@@ -91,7 +95,7 @@ export function App() {
             key={t.id}
             className={'tab' + (tab === t.id ? ' active' : '')}
             aria-current={tab === t.id ? 'page' : undefined}
-            onClick={() => setTab(t.id)}
+            onClick={() => go([t.id])}
           >
             {t.label}
           </button>

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from './supabase'
 import { remember, useTable } from './useTable'
 import { fold, fullMoment, shortMoment } from './text'
+import { slug } from './route'
 import { AISLES, aisleOf, guessAisle } from './aisles'
 import { LOCATIONS, type Ingredient, type ListItem, type Location, type Member, type ShoppingList } from './types'
 
@@ -22,11 +23,17 @@ function compare(sort: Sort) {
   }
 }
 
-export function CoursesScreen() {
+interface Props {
+  /** List named in the URL ("#/courses/marche"). */
+  listSlug?: string
+  /** Show another list: a history step, or `replace` to only fix the URL. */
+  onList: (slug: string, replace?: boolean) => void
+}
+
+export function CoursesScreen({ listSlug, onList }: Props) {
   const lists = useTable<ShoppingList>('lists', 'position')
   const items = useTable<ListItem>('list_items', 'id')
   const ingredients = useTable<Ingredient>('ingredients', 'name')
-  const [selected, setSelectedState] = useState<number | null>(() => Number(remember('list')) || null)
   const [label, setLabel] = useState('')
   const [quantity, setQuantity] = useState('')
   const [open, setOpen] = useState<number | null>(null) // item whose options are shown
@@ -41,10 +48,17 @@ export function CoursesScreen() {
     remember('sort', `${next.by}-${next.dir}`)
   }
 
-  function select(id: number) {
-    setSelectedState(id)
-    remember('list', String(id))
-  }
+  // The list in the URL, else the last one used, else the first.
+  const current =
+    lists.rows?.find((l) => slug(l.name) === listSlug) ??
+    lists.rows?.find((l) => l.id === Number(remember('list'))) ??
+    lists.rows?.[0]
+
+  useEffect(() => {
+    if (!current) return
+    remember('list', String(current.id))
+    if (slug(current.name) !== listSlug) onList(slug(current.name), true)
+  }, [current, listSlug, onList])
 
   async function act(p: PromiseLike<{ error: { message: string } | null }>) {
     const { error } = await p
@@ -60,7 +74,6 @@ export function CoursesScreen() {
     )
   }
 
-  const current = lists.rows.find((l) => l.id === selected) ?? lists.rows[0]
   const mine = items.rows.filter((i) => i.list_id === current?.id).sort(compare(sort))
   const todo = mine.filter((i) => !i.done)
   const done = mine.filter((i) => i.done)
@@ -182,7 +195,7 @@ export function CoursesScreen() {
               role="tab"
               aria-selected={l.id === current?.id}
               className={'chip' + (l.id === current?.id ? ' on' : '')}
-              onClick={() => select(l.id)}
+              onClick={() => onList(slug(l.name))}
             >
               {l.name}
               {openCount(l.id) > 0 && (
