@@ -111,6 +111,15 @@ export interface ListItem {
   ingredient_id: number | null
   menu_id: number | null
   aisle: string | null
+  /** Member who added it; null when added by Claude or imported. */
+  added_by: string | null
+  created_at: string
+}
+
+export interface Member {
+  user_id: string
+  display_name: string
+  avatar_url: string | null
 }
 
 export type Location = 'congélateur' | 'frigo' | 'placard'

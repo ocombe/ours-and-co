@@ -898,3 +898,34 @@ textarea:focus {
   font-size: 1rem;
   color: var(--fur-soft);
 }
+
+/* Who added a shopping item, and items new since my last visit. */
+.avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius);
+  object-fit: cover;
+}
+
+.avatar.initial {
+  display: grid;
+  place-items: center;
+  font: 800 0.8rem var(--font-display);
+  background: var(--sweater-wash);
+  color: var(--sweater);
+}
+
+.tag.new {
+  margin-left: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-color: var(--sweater);
+  color: var(--sweater);
+  vertical-align: 1px;
+}
+
+.chip .count.new {
+  background: var(--sweater);
+  color: var(--linen);
+}

@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from './supabase'
 import { remember, useTable } from './useTable'
 import { fold } from './text'
 import { AISLES, aisleOf, guessAisle } from './aisles'
-import { LOCATIONS, type Ingredient, type ListItem, type Location, type ShoppingList } from './types'
+import { LOCATIONS, type Ingredient, type ListItem, type Location, type Member, type ShoppingList } from './types'
 
 export function CoursesScreen() {
   const lists = useTable<ShoppingList>('lists', 'position')
@@ -14,6 +14,7 @@ export function CoursesScreen() {
   const [quantity, setQuantity] = useState('')
   const [open, setOpen] = useState<number | null>(null) // item whose options are shown
   const [error, setError] = useState('')
+  const { members, me, since } = useVisit()
 
   function select(id: number) {
     setSelectedState(id)
@@ -39,6 +40,9 @@ export function CoursesScreen() {
   const todo = mine.filter((i) => !i.done)
   const done = mine.filter((i) => i.done)
   const openCount = (id: number) => items.rows!.filter((i) => i.list_id === id && !i.done).length
+  /** Added by someone else (the other one, or Claude) since my last visit. */
+  const isNew = (i: ListItem) => !!since && !i.done && i.added_by !== me && Date.parse(i.created_at) > since
+  const hasNew = (id: number) => items.rows!.some((i) => i.list_id === id && isNew(i))
   const findIngredient = (name: string) => ingredients.rows?.find((i) => fold(i.name) === fold(name))
 
   async function add(e: FormEvent) {
@@ -93,8 +97,10 @@ export function CoursesScreen() {
             <span>
               <span className="item-label">{it.label}</span>
               {it.quantity && <span className="muted"> {it.quantity}</span>}
+              {isNew(it) && <span className="tag new">nouveau</span>}
             </span>
           </label>
+          <AddedBy member={members.find((m) => m.user_id === it.added_by)} />
           <button
             className="icon-btn"
             aria-expanded={open === it.id}
@@ -151,7 +157,11 @@ export function CoursesScreen() {
               onClick={() => select(l.id)}
             >
               {l.name}
-              {openCount(l.id) > 0 && <span className="count">{openCount(l.id)}</span>}
+              {openCount(l.id) > 0 && (
+                <span className={'count' + (hasNew(l.id) ? ' new' : '')} title={hasNew(l.id) ? 'Nouveaux articles' : undefined}>
+                  {openCount(l.id)}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -200,5 +210,47 @@ export function CoursesScreen() {
         </section>
       )}
     </main>
+  )
+}
+
+/**
+ * Household members (for their photos), who I am, and my previous visit to the lists:
+ * opening the screen, or coming back to the app on it, counts as a visit.
+ */
+function useVisit() {
+  const [members, setMembers] = useState<Member[]>([])
+  const [me, setMe] = useState<string | null>(null)
+  const [since, setSince] = useState<number | null>(null)
+
+  useEffect(() => {
+    supabase
+      .from('members')
+      .select('user_id, display_name, avatar_url')
+      .then(({ data }) => setMembers((data as Member[]) ?? []))
+    supabase.auth.getSession().then(({ data }) => setMe(data.session?.user.id ?? null))
+
+    async function visit() {
+      const { data } = await supabase.rpc('mark_lists_seen')
+      setSince(data ? Date.parse(data as string) : null)
+    }
+    visit()
+    const onVisible = () => document.visibilityState === 'visible' && visit()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+
+  return { members, me, since }
+}
+
+/** Photo of who added an item (or their initial if there is no photo). */
+function AddedBy({ member }: { member?: Member }) {
+  if (!member) return null
+  const label = `Ajouté par ${member.display_name}`
+  return member.avatar_url ? (
+    <img className="avatar" src={member.avatar_url} alt={label} title={label} width={24} height={24} referrerPolicy="no-referrer" />
+  ) : (
+    <span className="avatar initial" title={label} aria-label={label}>
+      {member.display_name.slice(0, 1)}
+    </span>
   )
 }
