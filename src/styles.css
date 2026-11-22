@@ -1011,3 +1011,26 @@ textarea:focus {
 .suggest-list li.on {
   background: var(--sweater-wash);
 }
+
+/* A dish name that opens its sheet (menu). */
+.dish-name.link {
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+}
+
+.dish-name.link:hover {
+  text-decoration-color: currentColor;
+}
+
+.dish-name.link.done {
+  text-decoration: line-through;
+}

@@ -5,6 +5,7 @@ import { COUNTED_KINDS, covered, fill, isoDate, mealsFor, need, nextSaturday, re
 import { longDate } from './text'
 import { DishPicker } from './DishPicker'
 import { ChooseSheet } from './ChooseSheet'
+import { DishSheet } from './DishSheet'
 import { dishesUsingReserve, fillShopping } from './shopping'
 import { KIND_LABEL, type DishWithStats, type Kind, type Menu, type MenuItem, type Wish } from './types'
 
@@ -12,7 +13,8 @@ const NEED_FIELD: Record<Exclude<Kind, 'kids'>, keyof Menu> = { midi: 'need_midi
 const SOURCE_TAG: Partial<Record<MenuItem['source'], string>> = { leftover: 'reste', wish: 'envie' }
 
 export function MenuScreen() {
-  const { dishes } = useDishes()
+  const { dishes, reload: reloadDishes } = useDishes()
+  const [editing, setEditing] = useState<DishWithStats | null>(null)
   const [menu, setMenu] = useState<Menu | null | undefined>(undefined)
   const [items, setItems] = useState<MenuItem[]>([])
   const [wishes, setWishes] = useState<Wish[]>([])
@@ -296,7 +298,17 @@ export function MenuScreen() {
                 {list.map((it) => (
                   <li key={it.id} className="menu-item">
                     <div className="menu-item-main">
-                      <span className={'dish-name' + (it.eaten >= it.meals ? ' done' : '')}>{it.label}</span>
+                      {dishById.get(it.dish_id ?? -1) ? (
+                        // The dish itself (not the menu's copy of its name): open its sheet to read or edit it.
+                        <button
+                          className={'dish-name link' + (it.eaten >= it.meals ? ' done' : '')}
+                          onClick={() => setEditing(dishById.get(it.dish_id!)!)}
+                        >
+                          {dishById.get(it.dish_id!)!.name}
+                        </button>
+                      ) : (
+                        <span className={'dish-name' + (it.eaten >= it.meals ? ' done' : '')}>{it.label}</span>
+                      )}
                       <span className="dish-meta">
                         {SOURCE_TAG[it.source] && <span className="tag">{SOURCE_TAG[it.source]}</span>}
                         {it.meals > 1 && <span className="muted">{it.meals} repas</span>}
@@ -337,6 +349,18 @@ export function MenuScreen() {
           </section>
         )
       })}
+
+      {editing && (
+        <DishSheet
+          dish={editing}
+          initialName=""
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null)
+            reloadDishes()
+          }}
+        />
+      )}
 
       {picker === 'choose' && dishes && (
         <ChooseSheet
