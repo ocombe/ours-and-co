@@ -929,3 +929,47 @@ textarea:focus {
   background: var(--sweater);
   color: var(--linen);
 }
+
+/* Shopping list: date added, and the two sortable "columns". */
+.added-at {
+  flex: none;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.sort-head {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 18px;
+  /* Right edge over the date column: row padding + options button + gap, less the button's own padding. */
+  padding: 0 50px 0 4px;
+}
+
+.sort-btn {
+  font: 700 0.8rem var(--font-body);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fur-soft);
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.sort-btn.on {
+  color: var(--fur);
+}
+
+.sort-btn:hover {
+  background: var(--sweater-wash);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

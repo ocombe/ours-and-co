@@ -1,9 +1,26 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from './supabase'
 import { remember, useTable } from './useTable'
-import { fold } from './text'
+import { fold, fullMoment, shortMoment } from './text'
 import { AISLES, aisleOf, guessAisle } from './aisles'
 import { LOCATIONS, type Ingredient, type ListItem, type Location, type Member, type ShoppingList } from './types'
+
+type SortBy = 'date' | 'name'
+type Sort = { by: SortBy; dir: 'asc' | 'desc' }
+
+function readSort(): Sort {
+  const [by, dir] = (remember('sort') ?? '').split('-')
+  return by === 'name' || by === 'date' ? { by, dir: dir === 'desc' ? 'desc' : 'asc' } : { by: 'date', dir: 'desc' }
+}
+
+const byName = new Intl.Collator('fr', { sensitivity: 'base', numeric: true })
+
+function compare(sort: Sort) {
+  return (a: ListItem, b: ListItem) => {
+    const c = sort.by === 'name' ? byName.compare(a.label, b.label) : Date.parse(a.created_at) - Date.parse(b.created_at) || a.id - b.id
+    return sort.dir === 'asc' ? c : -c
+  }
+}
 
 export function CoursesScreen() {
   const lists = useTable<ShoppingList>('lists', 'position')
@@ -15,6 +32,14 @@ export function CoursesScreen() {
   const [open, setOpen] = useState<number | null>(null) // item whose options are shown
   const [error, setError] = useState('')
   const { members, me, since } = useVisit()
+  const [sort, setSortState] = useState<Sort>(readSort)
+
+  /** Click on a column: same column flips the order, the other one starts A→Z / newest first. */
+  function sortBy(by: SortBy) {
+    const next: Sort = sort.by === by ? { by, dir: sort.dir === 'asc' ? 'desc' : 'asc' } : { by, dir: by === 'name' ? 'asc' : 'desc' }
+    setSortState(next)
+    remember('sort', `${next.by}-${next.dir}`)
+  }
 
   function select(id: number) {
     setSelectedState(id)
@@ -36,7 +61,7 @@ export function CoursesScreen() {
   }
 
   const current = lists.rows.find((l) => l.id === selected) ?? lists.rows[0]
-  const mine = items.rows.filter((i) => i.list_id === current?.id)
+  const mine = items.rows.filter((i) => i.list_id === current?.id).sort(compare(sort))
   const todo = mine.filter((i) => !i.done)
   const done = mine.filter((i) => i.done)
   const openCount = (id: number) => items.rows!.filter((i) => i.list_id === id && !i.done).length
@@ -101,6 +126,9 @@ export function CoursesScreen() {
             </span>
           </label>
           <AddedBy member={members.find((m) => m.user_id === it.added_by)} />
+          <time className="added-at muted" dateTime={it.created_at} title={`Ajouté le ${fullMoment(it.created_at)}`}>
+            {shortMoment(it.created_at)}
+          </time>
           <button
             className="icon-btn"
             aria-expanded={open === it.id}
@@ -186,7 +214,14 @@ export function CoursesScreen() {
 
       {error && <p className="error">{error}</p>}
 
-      {todo.length === 0 && done.length === 0 && <p className="muted">La liste est vide.</p>}
+      {todo.length === 0 && done.length === 0 ? (
+        <p className="muted">La liste est vide.</p>
+      ) : (
+        <div className="sort-head" role="group" aria-label="Trier">
+          <SortButton label="Article" by="name" sort={sort} onClick={sortBy} />
+          <SortButton label="Ajouté" by="date" sort={sort} onClick={sortBy} />
+        </div>
+      )}
 
       {byAisle.map((g) => (
         <section key={g.aisle} className="group aisle">
@@ -252,5 +287,24 @@ function AddedBy({ member }: { member?: Member }) {
     <span className="avatar initial" title={label} aria-label={label}>
       {member.display_name.slice(0, 1)}
     </span>
+  )
+}
+
+function SortButton({ label, by, sort, onClick }: { label: string; by: SortBy; sort: Sort; onClick: (by: SortBy) => void }) {
+  const active = sort.by === by
+  const order =
+    by === 'name' ? (sort.dir === 'asc' ? 'de A à Z' : 'de Z à A') : sort.dir === 'asc' ? 'du plus ancien' : 'du plus récent'
+  return (
+    <button
+      type="button"
+      className={'sort-btn' + (active ? ' on' : '')}
+      aria-pressed={active}
+      title={active ? `Trié ${order}, toucher pour inverser` : `Trier par ${label.toLowerCase()}`}
+      onClick={() => onClick(by)}
+    >
+      {label}
+      <span aria-hidden="true">{active ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ' ↕'}</span>
+      {active && <span className="visually-hidden">, trié {order}</span>}
+    </button>
   )
 }
