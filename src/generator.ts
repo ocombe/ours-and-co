@@ -8,7 +8,10 @@ import type { DishWithStats, Kind, Menu, MenuItem, Wish } from './types'
  * - one dish covers several meals (fewer at 4 people);
  * - wishes first, then dishes using what is in the reserve; recently eaten dishes are avoided, frequent and favourite
  *   ones come up more; at most one long dish per week; variety of categories;
- *   seasonal dishes only in their season.
+ *   seasonal dishes only in their season;
+ * - one dish per meat (volaille, porc, boeuf, veau/agneau): no second chicken dish while
+ *   anything else fits. Other categories (pasta, fish…) may repeat, at lower odds.
+ *   Only the generator follows this: dishes added by hand are never refused.
  */
 
 export type NewItem = Pick<MenuItem, 'dish_id' | 'label' | 'kind' | 'meals' | 'source'>
@@ -79,6 +82,9 @@ function pickWeighted<T>(items: T[], weights: number[], random: () => number): T
   return items[items.length - 1]
 }
 
+/** Categories that should not come twice in a generated menu. */
+const MEATS = new Set(['volaille', 'porc', 'boeuf', 'veau/agneau'])
+
 interface PickContext {
   dishes: DishWithStats[]
   /** Dishes already in the menu (and any to exclude). */
@@ -95,7 +101,9 @@ export function pickDish(kind: Kind, ctx: PickContext): DishWithStats | null {
   const now = ctx.now ?? new Date()
   const taken = new Set(ctx.chosen.map((d) => d.id))
   const hasLong = ctx.chosen.some((d) => d.effort === 'long')
-  const candidates = ctx.dishes.filter(
+  // Meats already in the menu (the girls' own dishes do not count).
+  const meats = new Set(ctx.chosen.filter((d) => !d.kids_only && MEATS.has(d.category)).map((d) => d.category))
+  const allowed = ctx.dishes.filter(
     (d) =>
       !taken.has(d.id) &&
       !ctx.exclude?.has(d.id) &&
@@ -103,6 +111,8 @@ export function pickDish(kind: Kind, ctx: PickContext): DishWithStats | null {
       inSeason(d, now) &&
       !(hasLong && d.effort === 'long'),
   )
+  const otherMeat = allowed.filter((d) => kind === 'kids' || !meats.has(d.category))
+  const candidates = otherMeat.length ? otherMeat : allowed
   return pickWeighted(
     candidates,
     candidates.map((d) => weight(d, kind, ctx.chosen, ctx.boost)),

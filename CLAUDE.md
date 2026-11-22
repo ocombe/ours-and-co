@@ -57,6 +57,7 @@ Tables (all in `public`, protected by RLS for household members; Claude runs as 
 - Meat dishes are usually lunch; quiches, salmon dishes, croque monsieur, caillettes, saucisson brioché are usually dinner.
 - One dish can cover several meals (quiche = 2 dinners, roast chicken = 3 lunches).
 - Long dishes (couscous, paella…) are rare: at most one per week.
+- Generated menus have at most one dish per meat (volaille, porc, boeuf, veau/agneau): no two chicken dishes. Pasta, fish… may repeat. Dishes added by hand are never refused.
 - Shopping: market on Saturday morning, Carrefour on Wednesday morning.
 - "Fushis" = home-made "faux sushis" (raw salmon on rice), not fusilli.
 - Steaks and steaks hachés are different dishes.
