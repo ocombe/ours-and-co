@@ -716,8 +716,16 @@ textarea:focus {
 
 .menu-item-main {
   display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.menu-item-text {
+  display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
 .dish-name.done {
@@ -941,8 +949,8 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   margin-top: 18px;
-  /* Right edge over the date column: row padding + options button + gap, less the button's own padding. */
-  padding: 0 50px 0 4px;
+  /* Right edge over the date column: row padding, less the sort button's own padding. */
+  padding: 0 8px 0 4px;
 }
 
 .sort-btn {
@@ -1033,4 +1041,150 @@ textarea:focus {
 
 .dish-name.link.done {
   text-decoration: line-through;
+}
+
+/* Drag and drop between groups (aisles, kinds of meal). */
+.drag-handle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 36px;
+  margin-left: -6px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--fur-soft);
+  fill: currentColor;
+  cursor: grab;
+  touch-action: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.drag-ghost {
+  position: fixed;
+  z-index: 50;
+  transform: translate(-12px, -50%);
+  pointer-events: none;
+  padding: 8px 12px;
+  max-width: 70vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  background: var(--surface);
+  color: var(--fur);
+  border: 2px solid var(--sweater);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+
+.drop-target {
+  outline: 2px dashed var(--sweater);
+  outline-offset: 4px;
+  border-radius: var(--radius);
+  background: var(--sweater-wash);
+}
+
+.is-dragging {
+  opacity: 0.4;
+}
+
+/* While dragging, empty groups appear so an item can be dropped there. */
+.drop-empty {
+  padding: 14px;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+/* Shopping row: the box ticks, the name opens the details. */
+.tick {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin: -6px 0;
+  cursor: pointer;
+}
+
+.tick input {
+  width: 24px;
+  height: 24px;
+  accent-color: var(--honey);
+  cursor: pointer;
+}
+
+.item-open {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.field.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.field.qty {
+  flex: 0 0 110px;
+}
+
+/* Result of "Mettre dans les courses". */
+.shop-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  background: var(--sweater-wash);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 0.92rem;
+}
+
+.shop-result p {
+  margin: 0;
+}
+
+.shop-result .notice {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.chips.wrap {
+  flex-wrap: wrap;
+  overflow: visible;
+  padding-top: 0;
+}
+
+/* Slide a shopping item left or right to tick it (phone). */
+.list-row-main {
+  touch-action: pan-y;
+  position: relative;
+  background: var(--surface);
+}
+
+.list-row:has(.sliding) {
+  background: var(--honey-wash);
+}
+
+.list-row-main.sliding {
+  transition: none;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.15);
+}
+
+.list-row-main.slide-ready {
+  background: var(--honey);
+  color: var(--honey-ink);
 }

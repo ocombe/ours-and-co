@@ -9,8 +9,8 @@ import type { DishWithStats, Kind, Menu, MenuItem, Wish } from './types'
  * - wishes first, then dishes using what is in the reserve; recently eaten dishes are avoided, frequent and favourite
  *   ones come up more; at most one long dish per week; variety of categories;
  *   seasonal dishes only in their season;
- * - one dish per meat (volaille, porc, boeuf, veau/agneau): no second chicken dish while
- *   anything else fits. Other categories (pasta, fish…) may repeat, at lower odds.
+ * - one dish per meat or fish (volaille, porc, boeuf, veau/agneau, poisson): no second chicken
+ *   or fish dish while anything else fits. Other categories (pasta, soup…) may repeat, at lower odds.
  *   Only the generator follows this: dishes added by hand are never refused.
  */
 
@@ -83,7 +83,7 @@ function pickWeighted<T>(items: T[], weights: number[], random: () => number): T
 }
 
 /** Categories that should not come twice in a generated menu. */
-const MEATS = new Set(['volaille', 'porc', 'boeuf', 'veau/agneau'])
+const MEATS = new Set(['volaille', 'porc', 'boeuf', 'veau/agneau', 'poisson'])
 
 interface PickContext {
   dishes: DishWithStats[]

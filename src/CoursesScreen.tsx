@@ -5,8 +5,11 @@ import { upsert } from './live'
 import { fold, fullMoment, shortMoment } from './text'
 import { slug } from './route'
 import { SuggestInput } from './SuggestInput'
-import { AISLES, aisleOf, guessAisle } from './aisles'
-import { LOCATIONS, type Ingredient, type ListItem, type Location, type Member, type ShoppingList } from './types'
+import { ListItemSheet, type ItemChanges } from './ListItemSheet'
+import { DragHandle, useDragToGroup } from './drag'
+import { useSwipe } from './swipe'
+import { AISLES, aisleOf, guessAisle, type Aisle } from './aisles'
+import { type Ingredient, type ListItem, type Location, type Member, type ShoppingList } from './types'
 
 type SortBy = 'date' | 'name'
 type Sort = { by: SortBy; dir: 'asc' | 'desc' }
@@ -38,7 +41,7 @@ export function CoursesScreen({ listSlug, onList }: Props) {
   const ingredients = useTable<Ingredient>('ingredients', 'name')
   const [label, setLabel] = useState('')
   const [quantity, setQuantity] = useState('')
-  const [open, setOpen] = useState<number | null>(null) // item whose options are shown
+  const [detail, setDetail] = useState<number | null>(null) // item whose sheet is open
   const [error, setError] = useState('')
   const { members, me, since } = useVisit()
   const [sort, setSortState] = useState<Sort>(readSort)
@@ -61,6 +64,18 @@ export function CoursesScreen({ listSlug, onList }: Props) {
     remember('list', String(current.id))
     if (slug(current.name) !== listSlug) onList(slug(current.name), true)
   }, [current, listSlug, onList])
+
+  // Drag an item onto another aisle.
+  const drag = useDragToGroup<Aisle>((id, aisle) => {
+    const item = items.rows?.find((i) => i.id === id)
+    if (item) saveItem(item, { label: item.label, quantity: item.quantity, aisle, list_id: item.list_id })
+  })
+
+  // Slide an item left or right (phone) to tick or untick it.
+  const swipe = useSwipe((id) => {
+    const item = items.rows?.find((i) => i.id === id)
+    if (item) toggleDone(item)
+  })
 
   /** Show a change at once, send it, and get the server's state back if it failed. */
   async function optimistic(local: (rows: ListItem[]) => ListItem[], request: PromiseLike<{ error: { message: string } | null }>) {
@@ -114,91 +129,76 @@ export function CoursesScreen({ listSlug, onList }: Props) {
     setQuantity('')
   }
 
-  /** Change an item's aisle and remember it for this product next time. */
-  async function setAisle(item: ListItem, aisle: string) {
-    setOpen(null)
-    let ingredientId = item.ingredient_id ?? findIngredient(item.label)?.id ?? null
-    if (ingredientId) {
-      await supabase.from('ingredients').update({ aisle }).eq('id', ingredientId)
-    } else {
-      const created = await supabase.from('ingredients').insert({ name: item.label, aisle }).select('id').single()
-      ingredientId = created.data?.id ?? null
+  /** Remember the aisle on the product, for next time; returns the product id. */
+  async function rememberAisle(item: ListItem, aisle: string) {
+    const id = item.ingredient_id ?? findIngredient(item.label)?.id ?? null
+    if (id) {
+      await supabase.from('ingredients').update({ aisle }).eq('id', id)
+      return id
     }
-    await optimistic(
-      changed(item.id, { aisle, ingredient_id: ingredientId }),
-      supabase.from('list_items').update({ aisle, ingredient_id: ingredientId }).eq('id', item.id),
-    )
+    const created = await supabase.from('ingredients').insert({ name: item.label, aisle }).select('id').single()
+    return (created.data?.id as number | undefined) ?? null
+  }
+
+  /** Save an item's details (from its sheet, or a drag to another aisle). */
+  async function saveItem(item: ListItem, c: ItemChanges) {
+    const ingredientId = c.aisle !== aisleOf(item) ? await rememberAisle(item, c.aisle) : item.ingredient_id
+    const changes = { label: c.label, quantity: c.quantity, aisle: c.aisle, list_id: c.list_id, ingredient_id: ingredientId }
+    await optimistic(changed(item.id, changes), supabase.from('list_items').update(changes).eq('id', item.id))
+    return true
   }
 
   async function toReserve(item: ListItem, location: Location) {
-    setOpen(null)
+    setDetail(null)
     const r = await supabase
       .from('reserve_items')
       .insert({ label: item.label, quantity: item.quantity, location, ingredient_id: item.ingredient_id })
     if (r.error) return setError(r.error.message)
+    await remove(item)
+  }
+
+  function toggleDone(item: ListItem) {
+    optimistic(changed(item.id, { done: !item.done }), supabase.from('list_items').update({ done: !item.done }).eq('id', item.id))
+  }
+
+  async function remove(item: ListItem) {
+    setDetail(null)
     await optimistic((rows) => rows.filter((r) => r.id !== item.id), supabase.from('list_items').delete().eq('id', item.id))
   }
 
   function row(it: ListItem) {
     return (
-      <li key={it.id} className={'list-row' + (it.done ? ' is-done' : '')}>
-        <div className="list-row-main">
-          <label className="check-row">
+      <li key={it.id} className={'list-row' + (it.done ? ' is-done' : '') + (drag.dragging === it.id ? ' is-dragging' : '')}>
+        <div className="list-row-main" {...swipe(it.id)}>
+          {!it.done && <DragHandle {...drag.handleProps(it.id, it.label)} />}
+          {/* Only the box ticks; the name opens the details. */}
+          <label className="tick">
             <input
               type="checkbox"
+              aria-label={`${it.done ? 'Décocher' : 'Cocher'} ${it.label}`}
               checked={it.done}
-              onChange={() =>
-                optimistic(changed(it.id, { done: !it.done }), supabase.from('list_items').update({ done: !it.done }).eq('id', it.id))
-              }
+              onChange={() => toggleDone(it)}
             />
-            <span>
-              <span className="item-label">{it.label}</span>
-              {it.quantity && <span className="muted"> {it.quantity}</span>}
-              {isNew(it) && <span className="tag new">nouveau</span>}
-            </span>
           </label>
+          <button className="item-open" onClick={() => setDetail(it.id)}>
+            <span className="item-label">{it.label}</span>
+            {it.quantity && <span className="muted"> {it.quantity}</span>}
+            {isNew(it) && <span className="tag new">nouveau</span>}
+          </button>
           <AddedBy member={members.find((m) => m.user_id === it.added_by)} />
           <time className="added-at muted" dateTime={it.updated_at} title={`Modifié le ${fullMoment(it.updated_at)}`}>
             {shortMoment(it.updated_at)}
           </time>
-          <button
-            className="icon-btn"
-            aria-expanded={open === it.id}
-            aria-label={`Options pour ${it.label}`}
-            onClick={() => setOpen(open === it.id ? null : it.id)}
-          >
-            ⋯
-          </button>
         </div>
-        {open === it.id && (
-          <div className="item-options">
-            <label className="field">
-              <span>Rayon</span>
-              <select value={aisleOf(it)} onChange={(e) => setAisle(it, e.target.value)}>
-                {AISLES.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="field">
-              <span>Mettre en réserve</span>
-              <div className="segmented">
-                {LOCATIONS.map((loc) => (
-                  <button key={loc} className="btn ghost small" onClick={() => toReserve(it, loc)}>
-                    {loc}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
       </li>
     )
   }
 
-  const byAisle = AISLES.map((a) => ({ aisle: a, items: todo.filter((i) => aisleOf(i) === a) })).filter((g) => g.items.length)
+  // While dragging, every aisle shows (empty ones too) so the item can go anywhere.
+  const byAisle = AISLES.map((a) => ({ aisle: a, items: todo.filter((i) => aisleOf(i) === a) })).filter(
+    (g) => g.items.length || drag.dragging !== null,
+  )
+  const opened = items.rows.find((i) => i.id === detail)
 
   return (
     <main className="screen">
@@ -251,11 +251,12 @@ export function CoursesScreen({ listSlug, onList }: Props) {
       )}
 
       {byAisle.map((g) => (
-        <section key={g.aisle} className="group aisle">
+        <section key={g.aisle} data-drop={g.aisle} className={'group aisle' + (drag.isOver(g.aisle) ? ' drop-target' : '')}>
           <h2>{g.aisle}</h2>
-          <ul className="dish-list">{g.items.map(row)}</ul>
+          {g.items.length ? <ul className="dish-list">{g.items.map(row)}</ul> : <p className="drop-empty muted small">Déposer ici</p>}
         </section>
       ))}
+      {drag.ghost}
 
       {done.length > 0 && (
         <section className="group">
@@ -273,6 +274,22 @@ export function CoursesScreen({ listSlug, onList }: Props) {
           </div>
           <ul className="dish-list">{done.map(row)}</ul>
         </section>
+      )}
+
+      {opened && (
+        <ListItemSheet
+          key={opened.id}
+          item={opened}
+          lists={lists.rows}
+          addedBy={members.find((m) => m.user_id === opened.added_by)?.display_name}
+          onClose={() => setDetail(null)}
+          onSave={async (c) => {
+            setDetail(null)
+            return saveItem(opened, c)
+          }}
+          onReserve={(loc) => toReserve(opened, loc)}
+          onDelete={() => remove(opened)}
+        />
       )}
     </main>
   )

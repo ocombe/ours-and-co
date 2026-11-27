@@ -7,7 +7,9 @@ import { longDate } from './text'
 import { DishPicker } from './DishPicker'
 import { ChooseSheet } from './ChooseSheet'
 import { DishSheet } from './DishSheet'
-import { dishesUsingReserve, fillShopping } from './shopping'
+import { MenuItemSheet, mealsAfterMove, type MenuItemChanges } from './MenuItemSheet'
+import { DragHandle, useDragToGroup } from './drag'
+import { dishesUsingReserve, fillShopping, type ShoppingResult } from './shopping'
 import { KIND_LABEL, type DishWithStats, type Kind, type Menu, type MenuItem, type Wish } from './types'
 
 const NEED_FIELD: Record<Exclude<Kind, 'kids'>, keyof Menu> = { midi: 'need_midi', weekend: 'need_weekend', soir: 'need_soir' }
@@ -24,9 +26,16 @@ export function MenuScreen() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [picker, setPicker] = useState<'menu' | 'wish' | 'choose' | null>(null)
-  const [shopMsg, setShopMsg] = useState('')
+  const [shop, setShop] = useState<ShoppingResult | null>(null)
+  const [detail, setDetail] = useState<number | null>(null) // menu item whose sheet is open
   const menuRef = useRef(menu)
   menuRef.current = menu
+
+  // Drag a dish to another kind of meal.
+  const drag = useDragToGroup<Kind>((id, kind) => {
+    const item = items.find((i) => i.id === id)
+    if (item) updateItem(item, { kind, meals: mealsAfterMove(item, dishById.get(item.dish_id ?? -1), kind) })
+  })
 
   /** The latest menu with its dishes, in one request. */
   const loadMenu = useCallback(async () => {
@@ -184,6 +193,17 @@ export function MenuScreen() {
     await run(() => supabase.from('menu_items').delete().eq('id', id))
   }
 
+  /** Change which meals a dish is for, or how many it covers this week (not the dish itself). */
+  async function updateItem(item: MenuItem, c: MenuItemChanges) {
+    setItems((cur) => cur.map((i) => (i.id === item.id ? { ...i, ...c } : i)))
+    await run(async () => {
+      const r = await supabase.from('menu_items').update(c).eq('id', item.id).select().single()
+      putItems(r.data as MenuItem | null)
+      return r
+    })
+    return true
+  }
+
   async function replace(item: MenuItem) {
     if (!dishes) return
     const dish = replacement(item, items, dishes, { boost: await dishesUsingReserve() })
@@ -204,16 +224,9 @@ export function MenuScreen() {
     if (!menu) return
     setBusy(true)
     setError('')
-    setShopMsg('')
+    setShop(null)
     try {
-      const r = await fillShopping(menu, items)
-      const parts = [
-        r.added ? `${r.added} ingrédient${r.added > 1 ? 's' : ''} ajouté${r.added > 1 ? 's' : ''} aux courses.` : 'Aucun ingrédient à ajouter.',
-      ]
-      if (r.inReserve.length) parts.push(`Déjà en réserve : ${r.inReserve.join(', ')}.`)
-      if (r.dishesWithoutIngredients.length)
-        parts.push(`Sans ingrédients renseignés : ${r.dishesWithoutIngredients.join(', ')}.`)
-      setShopMsg(parts.join(' '))
+      setShop(await fillShopping(menu, items))
     } catch (e) {
       setError((e as Error).message)
     }
@@ -306,17 +319,43 @@ export function MenuScreen() {
           Mettre dans les courses
         </button>
       </div>
-      {shopMsg && <p className="notice-text">{shopMsg}</p>}
+      {shop && (
+        <div className="shop-result" role="status">
+          <p>
+            {shop.added
+              ? `${shop.added} produit${shop.added > 1 ? 's' : ''} ajouté${shop.added > 1 ? 's' : ''} : ${shop.perList.map(([l, n]) => `${l} ${n}`).join(', ')}.`
+              : 'Aucun produit à ajouter.'}
+            {shop.bought.length > 0 && ` Déjà achetés : ${shop.bought.join(', ')}.`}
+            {shop.inReserve.length > 0 && ` Déjà en réserve : ${shop.inReserve.join(', ')}.`}
+          </p>
+          {shop.dishesWithoutIngredients.length > 0 && (
+            <div className="notice">
+              <p>
+                {shop.dishesWithoutIngredients.length} plat{shop.dishesWithoutIngredients.length > 1 ? 's' : ''} sans ingrédients
+                n’ajoute{shop.dishesWithoutIngredients.length > 1 ? 'nt' : ''} rien aux courses. Touche un plat pour compléter sa fiche :
+              </p>
+              <div className="chips wrap">
+                {shop.dishesWithoutIngredients.map((d) => (
+                  <button key={d.id} className="chip" onClick={() => dishById.get(d.id) && setEditing(dishById.get(d.id)!)}>
+                    {dishById.get(d.id)?.name ?? d.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className="error">{error}</p>}
 
       {[...COUNTED_KINDS, 'kids' as const].map((kind) => {
         const list = items.filter((i) => i.kind === kind)
-        if (kind === 'kids' && list.length === 0) return null
+        // The girls' part shows when it has dishes, or as a place to drop one.
+        if (kind === 'kids' && list.length === 0 && drag.dragging === null) return null
         const have = covered(items, kind)
         const want = need(menu, kind)
         return (
-          <section key={kind} className="group" aria-labelledby={`k-${kind}`}>
+          <section key={kind} data-drop={kind} className={'group' + (drag.isOver(kind) ? ' drop-target' : '')} aria-labelledby={`k-${kind}`}>
             <div className="row-between">
               <h2 id={`k-${kind}`}>{KIND_LABEL[kind]}</h2>
               {kind !== 'kids' && (
@@ -339,27 +378,25 @@ export function MenuScreen() {
               </p>
             )}
             {list.length === 0 ? (
-              <p className="muted small">Rien de prévu.</p>
+              <p className={drag.dragging !== null ? 'drop-empty muted small' : 'muted small'}>
+                {drag.dragging !== null ? 'Déposer ici' : 'Rien de prévu.'}
+              </p>
             ) : (
               <ul className="dish-list">
                 {list.map((it) => (
-                  <li key={it.id} className="menu-item">
+                  <li key={it.id} className={'menu-item' + (drag.dragging === it.id ? ' is-dragging' : '')}>
                     <div className="menu-item-main">
-                      {dishById.get(it.dish_id ?? -1) ? (
-                        // The dish itself (not the menu's copy of its name): open its sheet to read or edit it.
-                        <button
-                          className={'dish-name link' + (it.eaten >= it.meals ? ' done' : '')}
-                          onClick={() => setEditing(dishById.get(it.dish_id!)!)}
-                        >
-                          {dishById.get(it.dish_id!)!.name}
+                      <DragHandle {...drag.handleProps(it.id, dishById.get(it.dish_id ?? -1)?.name ?? it.label)} />
+                      <div className="menu-item-text">
+                        {/* This week's dish: which meals, how many; the dish's own sheet is one tap further. */}
+                        <button className={'dish-name link' + (it.eaten >= it.meals ? ' done' : '')} onClick={() => setDetail(it.id)}>
+                          {dishById.get(it.dish_id ?? -1)?.name ?? it.label}
                         </button>
-                      ) : (
-                        <span className={'dish-name' + (it.eaten >= it.meals ? ' done' : '')}>{it.label}</span>
-                      )}
                       <span className="dish-meta">
                         {SOURCE_TAG[it.source] && <span className="tag">{SOURCE_TAG[it.source]}</span>}
                         {it.meals > 1 && <span className="muted">{it.meals} repas</span>}
                       </span>
+                      </div>
                     </div>
                     <div className="parts" role="group" aria-label={`Repas mangés : ${it.eaten} sur ${it.meals}`}>
                       {Array.from({ length: it.meals }, (_, p) => (
@@ -396,6 +433,29 @@ export function MenuScreen() {
           </section>
         )
       })}
+
+      {drag.ghost}
+
+      {detail !== null && items.some((i) => i.id === detail) && (() => {
+        const item = items.find((i) => i.id === detail)!
+        const dish = dishById.get(item.dish_id ?? -1)
+        return (
+          <MenuItemSheet
+            key={item.id}
+            item={item}
+            dish={dish}
+            onClose={() => setDetail(null)}
+            onSave={(c) => {
+              setDetail(null)
+              return updateItem(item, c)
+            }}
+            onOpenDish={() => {
+              setDetail(null)
+              if (dish) setEditing(dish)
+            }}
+          />
+        )
+      })()}
 
       {editing && (
         <DishSheet
