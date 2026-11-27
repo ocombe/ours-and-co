@@ -68,7 +68,7 @@ export function CoursesScreen({ listSlug, onList }: Props) {
   // Drag an item onto another aisle.
   const drag = useDragToGroup<Aisle>((id, aisle) => {
     const item = items.rows?.find((i) => i.id === id)
-    if (item) saveItem(item, { label: item.label, quantity: item.quantity, aisle, list_id: item.list_id })
+    if (item) saveItem(item, { label: item.label, quantity: item.quantity, note: item.note, aisle, list_id: item.list_id })
   })
 
   // Slide an item left or right (phone) to tick or untick it.
@@ -143,7 +143,7 @@ export function CoursesScreen({ listSlug, onList }: Props) {
   /** Save an item's details (from its sheet, or a drag to another aisle). */
   async function saveItem(item: ListItem, c: ItemChanges) {
     const ingredientId = c.aisle !== aisleOf(item) ? await rememberAisle(item, c.aisle) : item.ingredient_id
-    const changes = { label: c.label, quantity: c.quantity, aisle: c.aisle, list_id: c.list_id, ingredient_id: ingredientId }
+    const changes = { label: c.label, quantity: c.quantity, note: c.note, aisle: c.aisle, list_id: c.list_id, ingredient_id: ingredientId }
     await optimistic(changed(item.id, changes), supabase.from('list_items').update(changes).eq('id', item.id))
     return true
   }
@@ -184,6 +184,7 @@ export function CoursesScreen({ listSlug, onList }: Props) {
             <span className="item-label">{it.label}</span>
             {it.quantity && <span className="muted"> {it.quantity}</span>}
             {isNew(it) && <span className="tag new">nouveau</span>}
+            {it.note && <span className="item-note">{it.note}</span>}
           </button>
           <AddedBy member={members.find((m) => m.user_id === it.added_by)} />
           <time className="added-at muted" dateTime={it.updated_at} title={`Modifié le ${fullMoment(it.updated_at)}`}>

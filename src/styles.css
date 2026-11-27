@@ -1188,3 +1188,14 @@ textarea:focus {
   background: var(--honey);
   color: var(--honey-ink);
 }
+
+/* Note of a shopping item, under its name. */
+.item-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.85rem;
+  color: var(--fur-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -107,6 +107,8 @@ export interface ListItem {
   list_id: number
   label: string
   quantity: string | null
+  /** Free note: "bio", "pour la quiche", a brand… */
+  note: string | null
   done: boolean
   ingredient_id: number | null
   menu_id: number | null

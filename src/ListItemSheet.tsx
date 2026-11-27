@@ -7,6 +7,7 @@ import { LOCATIONS, type ListItem, type Location, type ShoppingList } from './ty
 export interface ItemChanges {
   label: string
   quantity: string | null
+  note: string | null
   aisle: string
   list_id: number
 }
@@ -24,10 +25,15 @@ interface Props {
 
 /** Details of a shopping item: name, quantity, aisle, list; to the reserve or deleted. */
 export function ListItemSheet({ item, lists, addedBy, onClose, onSave, onReserve, onDelete }: Props) {
-  const initial: ItemChanges = { label: item.label, quantity: item.quantity, aisle: aisleOf(item), list_id: item.list_id }
+  const initial: ItemChanges = { label: item.label, quantity: item.quantity, note: item.note, aisle: aisleOf(item), list_id: item.list_id }
   const [draft, setDraft] = useState(initial)
   const [error, setError] = useState('')
-  const clean = (d: ItemChanges): ItemChanges => ({ ...d, label: d.label.trim(), quantity: d.quantity?.trim() || null })
+  const clean = (d: ItemChanges): ItemChanges => ({
+    ...d,
+    label: d.label.trim(),
+    quantity: d.quantity?.trim() || null,
+    note: d.note?.trim() || null,
+  })
   const dirty = JSON.stringify(clean(draft)) !== JSON.stringify(clean(initial))
 
   async function save() {
@@ -57,6 +63,16 @@ export function ListItemSheet({ item, lists, addedBy, onClose, onSave, onReserve
             <input value={draft.quantity ?? ''} onChange={(e) => setDraft({ ...draft, quantity: e.target.value })} />
           </label>
         </div>
+
+        <label className="field">
+          <span>Note</span>
+          <textarea
+            rows={2}
+            placeholder="Bio, la marque verte, pour la quiche…"
+            value={draft.note ?? ''}
+            onChange={(e) => setDraft({ ...draft, note: e.target.value })}
+          />
+        </label>
 
         <label className="field">
           <span>Rayon (retenu pour ce produit)</span>

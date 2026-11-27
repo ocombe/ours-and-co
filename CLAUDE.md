@@ -23,8 +23,8 @@ select * from claude.add_wish('Raclette', 'envie de fromage');
 -- Add a dish to the current (latest) menu; kind = 'midi' | 'weekend' | 'soir' | 'kids' (default from the dish)
 select * from claude.add_to_menu('Poulet rôti', 'weekend');
 
--- Add to a shopping list by list name (Marché, Carrefour, Picard, Courses, Pharmacie, Vrac, Bricolage, Ikea)
-select * from claude.add_to_list('Marché', 'Poireaux', '3');
+-- Add to a shopping list by list name (Marché, Carrefour, Picard, Courses, Pharmacie, Vrac, Bricolage, Ikea); quantity and note optional
+select * from claude.add_to_list('Marché', 'Poireaux', '3', 'pour la soupe');
 
 -- Add to the reserve (location: congélateur, frigo or placard)
 select * from claude.add_to_reserve('Magrets de canard', '2', 'congélateur');
@@ -46,7 +46,7 @@ Tables (all in `public`, protected by RLS for household members; Claude runs as 
 | `menus` | one per week, `starts_on` = Saturday; `need_midi` / `need_weekend` / `need_soir` = meals to cover |
 | `menu_items` | dishes of a menu: `kind` midi/weekend/soir/kids (kids = for the girls, not counted in the needs), `meals` covered, `eaten` parts; `source` generated/manual/wish/leftover |
 | `wishes` | dishes to put first in the next menu |
-| `lists`, `list_items` | shopping lists and their items (`aisle` = rayon, `menu_id` set when filled from a menu, `added_by` = member who added it, null when added by Claude, `updated_at` = last change, shown in the app) |
+| `lists`, `list_items` | shopping lists and their items (`aisle` = rayon, `menu_id` set when filled from a menu, `note` = free note, `added_by` = member who added it, null when added by Claude, `updated_at` = last change, shown in the app) |
 | `reserve_items` | what we already have (freezer, fridge, pantry); kept off shopping lists, favoured by the generator |
 | `members` | household accounts allowed to use the app (`avatar_url` = Google photo, `lists_seen_at` = last visit to the lists, for the "nouveau" badges) |
 
