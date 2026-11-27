@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Sheet } from './Sheet'
 import { disablePush, enablePush, pushState, testNotification, type PushState } from './push'
 
-/** Turn notifications on or off for this phone. */
+/** Turn notifications on or off for this device (phone or computer). */
 export function NotifySheet({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<PushState | null>(null)
   const [busy, setBusy] = useState(false)
@@ -26,8 +26,9 @@ export function NotifySheet({ onClose }: { onClose: () => void }) {
   return (
     <Sheet title="Notifications" onClose={onClose}>
       <p>
-        Quand l’autre ajoute des produits à une liste de courses, une notification arrive sur ce téléphone, même appli
-        fermée (une par liste, une minute après le dernier ajout). Tes propres ajouts ne te notifient pas.
+        Quand l’autre ajoute des produits à une liste de courses, une notification arrive sur cet appareil (téléphone ou
+        ordinateur), même appli fermée : une par liste, une minute après le dernier ajout. Tes propres ajouts ne te
+        notifient pas. À activer sur chaque appareil.
       </p>
 
       {state === null && <p className="muted">…</p>}
@@ -39,20 +40,20 @@ export function NotifySheet({ onClose }: { onClose: () => void }) {
       )}
       {state === 'denied' && (
         <p className="notice-text">
-          Les notifications sont bloquées pour Ours &amp; Co. Autorise-les dans les réglages du téléphone (Applis → Ours &amp;
-          Co → Notifications), puis reviens ici.
+          Les notifications sont bloquées pour Ours &amp; Co sur cet appareil. Autorise-les dans les réglages du site (le
+          cadenas à gauche de l’adresse) ou du téléphone (Applis → Ours &amp; Co → Notifications), puis reviens ici.
         </p>
       )}
       {state === 'off' && (
         <div className="sheet-actions">
           <button className="btn honey" disabled={busy} onClick={() => act(enablePush)}>
-            Activer sur ce téléphone
+            Activer sur cet appareil
           </button>
         </div>
       )}
       {state === 'on' && (
         <>
-          <p className="notice-text">Activées sur ce téléphone.</p>
+          <p className="notice-text">Activées sur cet appareil.</p>
           <div className="sheet-actions">
             <button className="btn ghost" disabled={busy} onClick={() => testNotification().catch((e) => setError(e.message))}>
               Essayer

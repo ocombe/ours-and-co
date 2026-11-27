@@ -18,7 +18,7 @@ function keyBytes(base64url: string) {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
 }
 
-/** Are notifications on for this phone (browser)? */
+/** Are notifications on for this device (browser)? */
 export async function pushState(): Promise<PushState> {
   if (!supported()) return 'unsupported'
   if (Notification.permission === 'denied') return 'denied'
@@ -26,7 +26,7 @@ export async function pushState(): Promise<PushState> {
   return sub && Notification.permission === 'granted' ? 'on' : 'off'
 }
 
-/** Ask the permission, subscribe this phone and save the subscription for the sender. */
+/** Ask the permission, subscribe this device and save the subscription for the sender. */
 export async function enablePush(): Promise<PushState> {
   if (!supported()) return 'unsupported'
   const permission = await Notification.requestPermission()
@@ -43,7 +43,7 @@ export async function enablePush(): Promise<PushState> {
   return 'on'
 }
 
-/** Stop notifications on this phone. */
+/** Stop notifications on this device. */
 export async function disablePush(): Promise<PushState> {
   if (!supported()) return 'unsupported'
   const sub = await (await registration()).pushManager.getSubscription()
@@ -54,11 +54,11 @@ export async function disablePush(): Promise<PushState> {
   return 'off'
 }
 
-/** A local notification, to check that this phone shows them. */
+/** A local notification, to check that this device shows them. */
 export async function testNotification() {
   const reg = await registration()
   await reg.showNotification('Ours & Co', {
-    body: 'Les notifications marchent sur ce téléphone.',
+    body: 'Les notifications marchent sur cet appareil.',
     icon: import.meta.env.BASE_URL + 'icons/icon-192.png',
     badge: import.meta.env.BASE_URL + 'icons/badge-96.png',
     tag: 'test',
