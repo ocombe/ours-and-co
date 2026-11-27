@@ -1199,3 +1199,34 @@ textarea:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* "Une nouvelle version est disponible" (UpdateBanner). */
+.update-banner {
+  position: fixed;
+  z-index: 20;
+  left: var(--gutter);
+  right: var(--gutter);
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--bar);
+  color: var(--bar-ink);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  font-weight: 700;
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.update-banner .btn.ghost {
+  border-color: rgb(255 255 255 / 0.3);
+}

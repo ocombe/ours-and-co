@@ -8,7 +8,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // Ask before switching to a new version (see src/UpdateBanner.tsx), instead of
+      // updating silently in the background while the open page keeps the old one.
+      registerType: 'prompt',
       manifest: {
         name: 'Ours & Co',
         short_name: 'Ours & Co',
