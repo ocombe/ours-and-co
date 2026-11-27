@@ -1230,3 +1230,19 @@ textarea:focus {
 .update-banner .btn.ghost {
   border-color: rgb(255 255 255 / 0.3);
 }
+
+/* Top bar: notifications bell next to sign-out. */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar .icon-btn.bell {
+  display: grid;
+  place-items: center;
+  background: none;
+  border-color: rgb(255 255 255 / 0.3);
+  color: inherit;
+  fill: currentColor;
+}

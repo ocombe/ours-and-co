@@ -48,7 +48,18 @@ Tables (all in `public`, protected by RLS for household members; Claude runs as 
 | `wishes` | dishes to put first in the next menu |
 | `lists`, `list_items` | shopping lists and their items (`aisle` = rayon, `menu_id` set when filled from a menu, `note` = free note, `added_by` = member who added it, null when added by Claude, `updated_at` = last change, shown in the app) |
 | `reserve_items` | what we already have (freezer, fridge, pantry); kept off shopping lists, favoured by the generator |
+| `push_subscriptions` | phones that turned notifications on (one row per browser) |
 | `members` | household accounts allowed to use the app (`avatar_url` = Google photo, `lists_seen_at` = last visit to the lists, for the "nouveau" badges) |
+
+## Push notifications
+
+Adding a shopping item notifies the other members' phones ("Olivier a ajouté 3 produits à Marché"),
+even with the app closed. A trigger queues the item in `private.push_queue`; every minute pg_cron
+(`private.push_flush`) calls the Edge Function `send-push` (`supabase/functions/send-push`, deploy it
+with the Supabase MCP `deploy_edge_function`, `verify_jwt: false`) for groups quiet for a minute.
+The function gets them from `public.push_take_batch()` (service role only) and sends Web Push;
+the VAPID private key is in Vault (`vapid_private_key`), the public key in `src/push.ts`. The phone
+shows it with `public/push-sw.js`. Items Claude adds (`added_by` null) notify everyone.
 
 ## Household rules (for suggestions and menus)
 

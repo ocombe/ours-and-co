@@ -27,8 +27,10 @@ export default defineConfig({
           { src: 'icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      includeAssets: ['icons/favicon-head-32.png', 'icons/favicon-head-48.png', 'icons/apple-touch-icon.png', 'icons/bear-head-128.png'],
+      includeAssets: ['icons/favicon-head-32.png', 'icons/favicon-head-48.png', 'icons/apple-touch-icon.png', 'icons/bear-head-128.png', 'icons/badge-96.png'],
       workbox: {
+        // Push notifications: shown by public/push-sw.js (see supabase/functions/send-push).
+        importScripts: ['push-sw.js'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\//,
