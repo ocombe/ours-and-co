@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from './supabase'
 import { remember, useTable } from './useTable'
 import { upsert } from './live'
+import { deleteRows, insertRow, readCache, updateRow, writeCache } from './offline'
 import { fold, fullMoment, shortMoment } from './text'
 import { slug } from './route'
 import { SuggestInput } from './SuggestInput'
@@ -77,7 +78,10 @@ export function CoursesScreen({ listSlug, onList }: Props) {
     if (item) toggleDone(item)
   })
 
-  /** Show a change at once, send it, and get the server's state back if it failed. */
+  /**
+   * Show a change at once and send it. Offline it waits in the outbox (offline.ts) and is
+   * sent when the network comes back; if the server refuses it, get its state back.
+   */
   async function optimistic(local: (rows: ListItem[]) => ListItem[], request: PromiseLike<{ error: { message: string } | null }>) {
     items.mutate(local)
     const { error } = await request
@@ -111,59 +115,68 @@ export function CoursesScreen({ listSlug, onList }: Props) {
     e.preventDefault()
     if (!current || !label.trim()) return
     const ing = findIngredient(label.trim())
-    // The new row comes back with the insert: shown at once, no reload.
-    const r = await supabase
-      .from('list_items')
-      .insert({
+    // The new row comes back with the insert (or, offline, a local copy): shown at once.
+    const r = await insertRow<ListItem>(
+      'list_items',
+      {
         list_id: current.id,
         label: label.trim(),
         quantity: quantity.trim() || null,
         ingredient_id: ing?.id ?? null,
         aisle: ing?.aisle ?? guessAisle(label),
-      })
-      .select()
-      .single()
+      },
+      { done: false, note: null, menu_id: null, added_by: me },
+    )
     setError(r.error ? r.error.message : '')
     if (r.data) items.mutate((rows) => upsert(rows, r.data as ListItem))
     setLabel('')
     setQuantity('')
   }
 
-  /** Remember the aisle on the product, for next time; returns the product id. */
-  async function rememberAisle(item: ListItem, aisle: string) {
+  /**
+   * Remember the aisle on the product, for next time (in the background: the item itself
+   * is saved without waiting). A product seen for the first time is created, and linked
+   * to the item once the server gave its id.
+   */
+  function rememberAisle(item: ListItem, aisle: string) {
     const id = item.ingredient_id ?? findIngredient(item.label)?.id ?? null
     if (id) {
-      await supabase.from('ingredients').update({ aisle }).eq('id', id)
+      updateRow('ingredients', id, { aisle })
       return id
     }
-    const created = await supabase.from('ingredients').insert({ name: item.label, aisle }).select('id').single()
-    return (created.data?.id as number | undefined) ?? null
+    insertRow('ingredients', { name: item.label, aisle }).then((r) => {
+      if (!r.queued && r.data && item.id > 0) updateRow('list_items', item.id, { ingredient_id: r.data.id })
+    })
+    return null
   }
 
   /** Save an item's details (from its sheet, or a drag to another aisle). */
   async function saveItem(item: ListItem, c: ItemChanges) {
-    const ingredientId = c.aisle !== aisleOf(item) ? await rememberAisle(item, c.aisle) : item.ingredient_id
+    const ingredientId = c.aisle !== aisleOf(item) ? (rememberAisle(item, c.aisle) ?? item.ingredient_id) : item.ingredient_id
     const changes = { label: c.label, quantity: c.quantity, note: c.note, aisle: c.aisle, list_id: c.list_id, ingredient_id: ingredientId }
-    await optimistic(changed(item.id, changes), supabase.from('list_items').update(changes).eq('id', item.id))
+    await optimistic(changed(item.id, changes), updateRow('list_items', item.id, changes))
     return true
   }
 
   async function toReserve(item: ListItem, location: Location) {
     setDetail(null)
-    const r = await supabase
-      .from('reserve_items')
-      .insert({ label: item.label, quantity: item.quantity, location, ingredient_id: item.ingredient_id })
+    const r = await insertRow('reserve_items', {
+      label: item.label,
+      quantity: item.quantity,
+      location,
+      ingredient_id: item.ingredient_id && item.ingredient_id > 0 ? item.ingredient_id : null,
+    })
     if (r.error) return setError(r.error.message)
     await remove(item)
   }
 
   function toggleDone(item: ListItem) {
-    optimistic(changed(item.id, { done: !item.done }), supabase.from('list_items').update({ done: !item.done }).eq('id', item.id))
+    optimistic(changed(item.id, { done: !item.done }), updateRow('list_items', item.id, { done: !item.done }))
   }
 
   async function remove(item: ListItem) {
     setDetail(null)
-    await optimistic((rows) => rows.filter((r) => r.id !== item.id), supabase.from('list_items').delete().eq('id', item.id))
+    await optimistic((rows) => rows.filter((r) => r.id !== item.id), deleteRows('list_items', [item.id]))
   }
 
   function row(it: ListItem) {
@@ -267,7 +280,7 @@ export function CoursesScreen({ listSlug, onList }: Props) {
               className="btn ghost small"
               onClick={() => {
                 const ids = done.map((d) => d.id)
-                optimistic((rows) => rows.filter((r) => !ids.includes(r.id)), supabase.from('list_items').delete().in('id', ids))
+                optimistic((rows) => rows.filter((r) => !ids.includes(r.id)), deleteRows('list_items', ids))
               }}
             >
               Retirer les {done.length} articles cochés
@@ -301,7 +314,7 @@ export function CoursesScreen({ listSlug, onList }: Props) {
  * opening the screen, or coming back to the app on it, counts as a visit.
  */
 function useVisit() {
-  const [members, setMembers] = useState<Member[]>([])
+  const [members, setMembers] = useState<Member[]>(() => readCache<Member[]>('members') ?? [])
   const [me, setMe] = useState<string | null>(null)
   const [since, setSince] = useState<number | null>(null)
 
@@ -309,7 +322,12 @@ function useVisit() {
     supabase
       .from('members')
       .select('user_id, display_name, avatar_url')
-      .then(({ data }) => setMembers((data as Member[]) ?? []))
+      .then(({ data }) => {
+        // Offline: keep the copy on the device.
+        if (!data) return
+        setMembers(data as Member[])
+        writeCache('members', data)
+      })
     supabase.auth.getSession().then(({ data }) => setMe(data.session?.user.id ?? null))
 
     async function visit() {

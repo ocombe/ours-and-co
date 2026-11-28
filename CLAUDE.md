@@ -7,6 +7,8 @@ Family PWA for meals, shopping lists and pantry/freezer stock. UI and data are i
 - Data: Supabase project `ours-and-co` (ref `xeobqdfkjbtclosrfhmi`, eu-west-3).
   Schema changes live in `supabase/migrations/`; apply them with the Supabase MCP `apply_migration`.
 - Local spec and raw data (`SPEC.md`, `data/`) are git-ignored on purpose: the repo is public.
+- Offline: screens start from a copy kept in localStorage; shopping, reserve and eaten-part changes
+  made offline wait in an outbox (`src/offline.ts`) and are sent in order when the network comes back.
 
 ## Reading and changing data from a chat
 

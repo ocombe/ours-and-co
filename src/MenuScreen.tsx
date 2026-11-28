@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { useDishes } from './data'
 import { applyChange, coalesce, listen, sortBy, upsert, type Change } from './live'
+import { applyPending, eatPart, isNetworkError, onSynced, readCache, writeCache } from './offline'
 import { COUNTED_KINDS, covered, fill, isoDate, mealsFor, need, nextSaturday, replacement } from './generator'
 import { longDate } from './text'
 import { DishPicker } from './DishPicker'
@@ -20,9 +21,10 @@ type Result = PromiseLike<{ error: { message: string } | null }>
 export function MenuScreen() {
   const { dishes, ate } = useDishes()
   const [editing, setEditing] = useState<DishWithStats | null>(null)
-  const [menu, setMenu] = useState<Menu | null | undefined>(undefined)
-  const [items, setItems] = useState<MenuItem[]>([])
-  const [wishes, setWishes] = useState<Wish[]>([])
+  // Start from the copy kept on the device (offline, or before the server answers).
+  const [menu, setMenu] = useState<Menu | null | undefined>(() => readCache<{ menu: Menu | null }>('menu')?.menu)
+  const [items, setItems] = useState<MenuItem[]>(() => applyPending('menu_items', readCache<{ items: MenuItem[] }>('menu')?.items ?? []))
+  const [wishes, setWishes] = useState<Wish[]>(() => readCache<Wish[]>('wishes') ?? [])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [picker, setPicker] = useState<'menu' | 'wish' | 'choose' | null>(null)
@@ -46,17 +48,25 @@ export function MenuScreen() {
       .order('id', { referencedTable: 'menu_items' })
       .limit(1)
       .maybeSingle()
-    if (m.error) return setError(m.error.message)
+    if (m.error) return isNetworkError(m.error) ? undefined : setError(m.error.message)
     const { menu_items, ...rest } = (m.data ?? { menu_items: [] }) as Menu & { menu_items: MenuItem[] }
     setMenu(m.data ? (rest as Menu) : null)
-    setItems(menu_items)
+    setItems(applyPending('menu_items', menu_items))
   }, [])
 
   const loadWishes = useCallback(async () => {
     const w = await supabase.from('wishes').select('*').order('id')
-    if (w.error) return setError(w.error.message)
+    if (w.error) return isNetworkError(w.error) ? undefined : setError(w.error.message)
     setWishes(w.data as Wish[])
   }, [])
+
+  // Keep the device's copy up to date.
+  useEffect(() => {
+    if (menu !== undefined) writeCache('menu', { menu, items })
+  }, [menu, items])
+  useEffect(() => writeCache('wishes', wishes), [wishes])
+  // Changes made offline were sent: reload from the server.
+  useEffect(() => onSynced(() => void loadMenu()), [loadMenu])
 
   useEffect(() => {
     loadMenu()
@@ -98,7 +108,11 @@ export function MenuScreen() {
     setError('')
     const { error } = await action()
     if (error) {
-      setError(error.message)
+      setError(
+        isNetworkError(error)
+          ? 'Pas de réseau : ça, il faut le faire en ligne (cocher les repas mangés marche hors ligne).'
+          : error.message,
+      )
       await Promise.all([loadMenu(), loadWishes()])
     }
     setBusy(false)
@@ -233,16 +247,18 @@ export function MenuScreen() {
     setBusy(false)
   }
 
-  /** Tick or untick one part: one call (history and counter change together in the database). */
+  /**
+   * Tick or untick one part: one call (history and counter change together in the database).
+   * Shown at once; offline it waits in the outbox and is sent when the network comes back.
+   */
   async function toggleEaten(item: MenuItem, part: number) {
     const eat = part >= item.eaten
+    const eaten = item.eaten + (eat ? 1 : -1)
+    setItems((cur) => cur.map((i) => (i.id === item.id ? { ...i, eaten } : i)))
+    if (item.dish_id != null) ate(item.dish_id, eat ? 1 : -1)
     await run(async () => {
-      const r = eat
-        ? await supabase.rpc('eat_part', { p_item: item.id, p_on: isoDate(new Date()) })
-        : await supabase.rpc('uneat_part', { p_item: item.id })
-      if (r.error) return r
-      putItems(r.data as MenuItem)
-      if (item.dish_id != null) ate(item.dish_id, eat ? 1 : -1)
+      const r = await eatPart(item.id, eat, isoDate(new Date()), eaten)
+      if (r.data) putItems(r.data as unknown as MenuItem)
       return r
     })
   }

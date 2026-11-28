@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { supabase } from './supabase'
 import { useTable } from './useTable'
+import { upsert } from './live'
+import { deleteRows, insertRow } from './offline'
 import { LOCATIONS, type Location, type ReserveItem } from './types'
 
 const LOCATION_TITLE: Record<Location, string> = {
@@ -24,7 +25,10 @@ export function ReserveScreen() {
   async function add(e: FormEvent) {
     e.preventDefault()
     if (!label.trim()) return
-    await act(supabase.from('reserve_items').insert({ label: label.trim(), quantity: quantity.trim() || null, location }))
+    // Shown at once (offline too: it is sent when the network comes back).
+    const r = await insertRow<ReserveItem>('reserve_items', { label: label.trim(), quantity: quantity.trim() || null, location }, { ingredient_id: null })
+    setError(r.error ? r.error.message : '')
+    if (r.data) reserve.mutate((rows) => upsert(rows, r.data as ReserveItem))
     setLabel('')
     setQuantity('')
   }
@@ -83,7 +87,10 @@ export function ReserveScreen() {
                       <span className="item-label">{r.label}</span>
                       {r.quantity && <span className="muted"> {r.quantity}</span>}
                     </span>
-                    <button className="btn ghost small" onClick={() => act(supabase.from('reserve_items').delete().eq('id', r.id))}>
+                    <button className="btn ghost small" onClick={() => {
+                        reserve.mutate((rows) => rows.filter((x) => x.id !== r.id))
+                        act(deleteRows('reserve_items', [r.id]))
+                      }}>
                       Utilisé
                     </button>
                   </li>

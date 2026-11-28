@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { applyChange, coalesce, listen, sortBy, upsert, type Change } from './live'
+import { readCache, writeCache } from './offline'
 import type { Dish, DishWithStats } from './types'
 
 const WEEK = 7 * 24 * 3600 * 1000
@@ -14,7 +15,8 @@ const LEGACY_MEALS_PER_WEEK = 10
  * and everything is reloaded when the app comes back to the foreground.
  */
 export function useDishes() {
-  const [dishes, setDishes] = useState<DishWithStats[] | null>(null)
+  // Start from the copy kept on the device (offline, or before the server answers).
+  const [dishes, setDishes] = useState<DishWithStats[] | null>(() => readCache<DishWithStats[]>('dishes'))
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
@@ -23,7 +25,8 @@ export function useDishes() {
       supabase.from('history').select('dish_id, eaten_on, legacy_rank').limit(20000),
     ])
     if (d.error || h.error) {
-      setError((d.error ?? h.error)!.message)
+      // Offline with a copy on the device: keep showing it.
+      if (!readCache('dishes')) setError((d.error ?? h.error)!.message)
       return
     }
     const maxRank = Math.max(0, ...h.data.map((r) => r.legacy_rank ?? 0))
@@ -83,6 +86,10 @@ export function useDishes() {
       ) ?? cur,
     )
   }, [])
+
+  useEffect(() => {
+    if (dishes) writeCache('dishes', dishes)
+  }, [dishes])
 
   return { dishes, error, reload: load, ate }
 }

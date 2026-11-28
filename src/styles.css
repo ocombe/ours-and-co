@@ -1246,3 +1246,24 @@ textarea:focus {
   color: inherit;
   fill: currentColor;
 }
+
+/* Offline: "Hors ligne · 3 modifications en attente" under the top bar. */
+.offline-banner {
+  position: sticky;
+  top: calc(env(safe-area-inset-top) + 56px);
+  z-index: 2;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px var(--gutter);
+  background: var(--sweater-wash);
+  color: var(--fur);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.offline-banner.error-banner {
+  background: var(--danger);
+  color: var(--danger-ink);
+}

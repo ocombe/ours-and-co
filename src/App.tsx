@@ -9,6 +9,8 @@ import { ReserveScreen } from './ReserveScreen'
 import { remember } from './useTable'
 import { useHashPath } from './route'
 import { NotifySheet } from './NotifySheet'
+import { OfflineBanner } from './OfflineBanner'
+import { clearOfflineData, isNetworkError, readCache, writeCache } from './offline'
 
 const TABS = [
   { id: 'menu', label: 'Menu' },
@@ -63,8 +65,22 @@ export function App() {
       .select('user_id')
       .eq('user_id', session.user.id)
       .maybeSingle()
-      .then(({ data }) => setMembership(data ? 'member' : 'outsider'))
+      .then(({ data, error }) => {
+        // Offline: trust the last answer for this account.
+        if (error && isNetworkError(error)) {
+          setMembership(readCache<string>('member') === session.user.id ? 'member' : 'outsider')
+          return
+        }
+        setMembership(data ? 'member' : 'outsider')
+        if (data) writeCache('member', session.user.id)
+      })
   }, [session])
+
+  // Nothing of this account stays on the device (copies, waiting changes).
+  function signOut() {
+    clearOfflineData()
+    supabase.auth.signOut()
+  }
 
   if (session === undefined) return null
   if (!session) return <Login />
@@ -78,7 +94,7 @@ export function App() {
           Tu es connecté avec <strong>{session.user.email}</strong>, mais ce compte ne fait pas encore
           partie de la famille. Demande à Olivier de l’ajouter, puis recharge la page.
         </p>
-        <button className="btn ghost" onClick={() => supabase.auth.signOut()}>
+        <button className="btn ghost" onClick={signOut}>
           Se déconnecter
         </button>
       </main>
@@ -98,11 +114,12 @@ export function App() {
               <path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.5A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.5L18 12.6V9a6 6 0 0 0-6-6Zm0 19a3 3 0 0 0 2.8-2H9.2A3 3 0 0 0 12 22Z" />
             </svg>
           </button>
-          <button className="btn ghost small" onClick={() => supabase.auth.signOut()}>
+          <button className="btn ghost small" onClick={signOut}>
             Se déconnecter
           </button>
         </div>
       </header>
+      <OfflineBanner />
       {notify && <NotifySheet onClose={() => setNotify(false)} />}
       {tab === 'menu' && <MenuScreen />}
       {tab === 'plats' && <DishesScreen />}
